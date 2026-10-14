@@ -17,6 +17,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -193,15 +194,31 @@ class Handler(BaseHTTPRequestHandler):
                 updated, warning = projects.edit(pid, changes)
                 return {"project": updated, "warning": warning}
             if path == "/api/projects/remove":
-                if runner.busy(pid):
-                    raise ValueError("작업이 도는 중이다 — 멈춘 뒤에 뺀다")
-                moved = projects.remove(pid, keep_records=not body.get("delete_records"))
-                runner.JOBS.pop(pid, None)
-                return {"moved_records": moved}
+                return self.remove_project(pid, bool(body.get("delete_records")))
             if path == "/api/projects/open":
                 open_folder(Path(project["path"]))
                 return {}
         raise ValueError("없는 경로")
+
+    def remove_project(self, pid: str, delete_records: bool) -> dict:
+        """프로젝트 삭제 — MemoDesk 목록에서 빼고 기록은 휴지통(data/trash)으로. 실제 폴더는 건드리지 않는다.
+        도는 작업이 있으면 멈추고, 되돌림이 끝날 때까지(최대 60초) 기다린 뒤 지운다 — 되돌림이 기록 폴더의 백업을 쓰기 때문이다.
+        LOCK 을 쥔 채 기다리면 작업 마무리(finish)가 LOCK 을 못 얻어 멈추므로, 기다리는 동안은 LOCK 을 놓는다."""
+        runner.LOCK.release()
+        try:
+            if runner.busy(pid):
+                runner.stop(pid)
+                deadline = time.monotonic() + 60
+                while runner.busy(pid) and time.monotonic() < deadline:
+                    time.sleep(0.5)
+                if runner.busy(pid):
+                    raise ValueError("작업이 아직 끝나지 않았습니다 — 잠시 뒤 다시 삭제하세요")
+        finally:
+            runner.LOCK.acquire()
+        moved = projects.remove(pid, keep_records=not delete_records)
+        runner.JOBS.pop(pid, None)
+        runner.LANES.pop(pid, None)
+        return {"moved_records": moved}
 
     def post_note(self, path: str, body: dict) -> None:
         pid = str(body.get("project", ""))

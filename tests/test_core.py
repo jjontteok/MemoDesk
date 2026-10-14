@@ -223,6 +223,18 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(self.call("/api/notes", {"project": "nope", "text": "x"})[0], 400)
         self.assertEqual(self.call("/api/notes/status", {"project": pid, "id": "M01", "status": "working"})[0], 400)
 
+    def test_delete_project_keeps_folder_and_moves_records_to_trash(self) -> None:
+        work = Path(tempfile.mkdtemp())
+        (work / "keep.txt").write_text("그대로", encoding="utf-8")
+        pid = self.call("/api/projects/add", {"name": "delete-me", "path": str(work)})[1]["project"]["id"]
+        runner.set_paused(pid, True)
+        self.call("/api/notes", {"project": pid, "text": "할 일"})
+        code, data = self.call("/api/projects/remove", {"project": pid, "delete_records": True})
+        self.assertEqual(code, 200)
+        self.assertTrue((work / "keep.txt").exists())                        # 실제 폴더는 그대로
+        self.assertTrue(Path(data["moved_records"], "notes.json").exists())   # 기록은 휴지통으로
+        self.assertNotIn(pid, [p["id"] for p in self.call("/api/state")[1]["projects"]])
+
 
 if __name__ == "__main__":
     unittest.main()

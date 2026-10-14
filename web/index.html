@@ -66,13 +66,13 @@
   body.multi h4.sec.dhead:not(:empty):hover { color: var(--accent); }
   body.multi .done-folded ul.notes { display: none; }
   ol.queue, ul.notes { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
-  ol.queue li, ul.notes li { display: grid; grid-template-columns: auto minmax(16em, 1fr) auto; gap: 8px; align-items: start;
+  ol.queue > li, ul.notes > li { display: grid; grid-template-columns: auto minmax(16em, 1fr) auto; gap: 8px; align-items: start;
                 padding: 8px; border: 1px solid var(--line); border-radius: 8px; }
-  ol.queue li.working { background: var(--hl); border-color: var(--warn); }
-  ol.queue li.queued { cursor: grab; }
-  ol.queue li.dragging { opacity: .45; }
-  ol.queue li.drop-before { box-shadow: 0 -3px 0 var(--accent); }
-  ol.queue li.drop-after { box-shadow: 0 3px 0 var(--accent); }
+  ol.queue > li.working { background: var(--hl); border-color: var(--warn); }
+  ol.queue > li.queued { cursor: grab; }
+  ol.queue > li.dragging { opacity: .45; }
+  ol.queue > li.drop-before { box-shadow: 0 -3px 0 var(--accent); }
+  ol.queue > li.drop-after { box-shadow: 0 3px 0 var(--accent); }
   .grip { color: var(--muted); font-size: 16px; line-height: 1; margin-right: 2px; user-select: none; }
   .pos { font-weight: 700; color: var(--muted); min-width: 22px; text-align: right; }
   .nid { font-weight: 700; color: var(--muted); display: grid; gap: 2px; justify-items: start; align-content: start; align-self: start; }
@@ -90,6 +90,44 @@
   .rhead { font-weight: 600; word-break: break-word; flex: 1 1 12em; min-width: 0; }
   .rwhen { color: var(--muted); font-size: 11px; white-space: nowrap; margin-left: auto; }
   .rbody { margin: 6px 0 2px 16px; padding: 6px 10px; border-left: 3px solid var(--line); color: var(--muted); white-space: pre-wrap; word-break: break-word; line-height: 1.55; }
+  /* AI 답 — 한 줄 요약(크게) · 미리보기 2줄 · 펼치면 서식대로 · [크게 보기] 읽기 창 (2026-10-14 사용자 요청: 답을 읽기 좋게) */
+  .answer { margin-top: 6px; border: 1px solid var(--line); border-left: 4px solid var(--line); border-radius: 8px; padding: 8px 12px; background: var(--card); }
+  .answer.r-ok { border-left-color: var(--ok); } .answer.r-ask { border-left-color: var(--warn); } .answer.r-bad { border-left-color: var(--bad); }
+  .answer .ahead { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; }
+  .answer .ahead .rhead { font-size: 14px; }
+  .answer .preview { margin-top: 4px; color: var(--muted); font-size: 13px; line-height: 1.55;
+                     display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .answer .abtns { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+  .answer .abtns button { padding: 2px 10px; font-size: 12px; }
+  .answer .afull { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--line); }
+  .answer .ahist { margin-top: 8px; font-size: 11px; color: var(--muted); white-space: pre-wrap; }
+  .mdx { font-size: 14px; line-height: 1.7; color: var(--ink); word-break: break-word; }
+  .mdx p { margin: 0 0 8px; }
+  .mdx .md-h { margin: 12px 0 6px; line-height: 1.35; }
+  .mdx h3.md-h { font-size: 17px; } .mdx h4.md-h { font-size: 15px; } .mdx h5.md-h, .mdx h6.md-h { font-size: 14px; }
+  .mdx .md-h:first-child { margin-top: 0; }
+  .mdx .md-list { margin: 0 0 8px; padding-left: 22px; }
+  .mdx ul.md-list { list-style: disc; } .mdx ol.md-list { list-style: decimal; }   /* 메모 목록(ul.notes) 안에 있어도 기본 점 모양으로 */
+  .mdx .md-list li { margin: 2px 0; } .mdx .md-list li.deep { margin-left: 18px; list-style-type: circle; }
+  .mdx .md-list li.done { color: var(--muted); }
+  .mdx code { background: var(--chip); padding: 1px 5px; border-radius: 4px; font-size: .92em; }
+  .mdx .md-code { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 12px; white-space: pre-wrap; max-height: none; }
+  .mdx blockquote { margin: 0 0 8px; padding: 4px 12px; border-left: 3px solid var(--accent); color: var(--muted); }
+  .mdx hr { border: 0; border-top: 1px solid var(--line); margin: 10px 0; }
+  .mdx .md-table { overflow-x: auto; margin: 0 0 8px; }
+  .mdx table { border-collapse: collapse; font-size: 13px; }
+  .mdx th, .mdx td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; }
+  .mdx th { background: var(--chip); }
+  /* 크게 보기 — 읽기 창 */
+  .reader { position: fixed; inset: 0; z-index: 90; background: rgba(15, 18, 23, .55); display: flex; justify-content: center; align-items: flex-start; padding: 5vh 16px; overflow-y: auto; }
+  .reader.hidden { display: none; }
+  .reader .sheet { background: var(--card); border-radius: 14px; width: min(820px, 100%); padding: 24px 28px; box-shadow: 0 20px 60px rgba(0,0,0,.35); }
+  .reader .rtop { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+  .reader .rtop .sp { flex: 1; }
+  .reader h2 { margin: 4px 0 12px; font-size: 20px; line-height: 1.4; }
+  .reader .memo { background: var(--chip); border-radius: 8px; padding: 8px 12px; font-size: 13px; color: var(--muted); margin-bottom: 14px; white-space: pre-wrap; }
+  .reader .mdx { font-size: 16px; line-height: 1.8; }
+  .reader .rfiles { margin-top: 14px; }
   .rfiles { margin-top: 4px; font-size: 12px; color: var(--muted); word-break: break-all; }
   .rfiles code { background: var(--chip); color: var(--ink); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
   .nact { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; align-items: center; max-width: 24rem; }
@@ -100,7 +138,7 @@
   .st { font-size: 12px; padding: 1px 8px; border-radius: 999px; background: var(--chip); white-space: nowrap; }
   .st-queued { color: var(--accent); } .st-working { color: var(--warn); } .st-open { color: var(--bad); }
   .st-review { color: var(--ok); } .st-done { color: var(--muted); text-decoration: line-through; }
-  li.done .ntext { color: var(--muted); }
+  ul.notes > li.done .ntext { color: var(--muted); }
   select.kindsel { font: inherit; font-size: 12px; color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 2px 4px; }
   ol.refines { margin: 4px 0 0; padding-left: 18px; font-size: 13px; }
   ol.refines li { display: list-item; padding: 0; border: 0; background: none; }
@@ -171,7 +209,7 @@
     .kinds { flex-direction: row; }
     .add textarea { flex-basis: 100%; }
     .submit { width: 100%; flex-direction: row; }
-    ol.queue li, ul.notes li { grid-template-columns: auto 1fr; }
+    ol.queue > li, ul.notes > li { grid-template-columns: auto 1fr; }
     .nact { grid-column: 1 / -1; justify-content: flex-start; }
     .nact.rows, .nact .arow { align-items: flex-start; justify-content: flex-start; }
   }
@@ -209,6 +247,7 @@
   <div id="list"><p class="empty">불러오는 중…</p></div>
 </main>
 </div>
+<div class="reader hidden" id="reader" role="dialog" aria-modal="true"><div class="sheet" id="reader-sheet"></div></div>
 <div class="modal" id="setup-modal" role="dialog" aria-modal="true" aria-labelledby="setup-title">
   <div class="dialog" id="setup"><p class="checking">MemoDesk 를 쓸 준비가 됐는지 확인하는 중…</p></div>
 </div>
@@ -532,11 +571,17 @@ function historyLines(n, limit = 6) {
 function noteLog(n) {
   const r = n.result;
   if (r && r.headline && !["queued", "working"].includes(n.status)) {
+    // AI 답 — 요약 한 줄 + 미리보기 2줄. [펼치기]는 서식대로, [크게 보기]는 읽기 창. 펼친 상태는 2초 새로고침에도 유지
     const key = `${n.id}|${r.at}`;
+    const open = OPEN_LOGS.has(key);
+    const cls = r.kind === "fixed" ? "r-ok" : r.kind === "needs_confirm" ? "r-ask" : "r-bad";
     const files = (r.files || []).length ? `<div class="rfiles">바꾼 파일 ${r.files.map(f => `<code>${esc(f)}</code>`).join(" ")}</div>` : "";
-    return `<details class="nres" data-log-key="${esc(key)}"${OPEN_LOGS.has(key) ? " open" : ""}>
-      <summary>${resultTag(r.label, r.kind)}<span class="rhead">${esc(r.headline)}</span><span class="rwhen">${esc(time(r.at))} · 자세히</span></summary>
-      <div class="rbody">${esc((r.detail || "(자세한 설명 없음)") + historyLines(n))}</div></details>${files}`;
+    return `<div class="answer ${cls}">
+      <div class="ahead">${resultTag(r.label, r.kind)}<span class="rhead">${esc(r.headline)}</span><span class="rwhen">${esc(time(r.at))}</span></div>
+      ${open ? `<div class="afull mdx">${md(r.detail || "(자세한 설명 없음)")}</div>${files}<div class="ahist">${esc(historyLines(n).trim())}</div>`
+             : (r.detail ? `<div class="preview">${esc(mdPlain(r.detail))}</div>` : "")}
+      <div class="abtns">${r.detail ? `<button data-ans="toggle" data-key="${esc(key)}">${open ? "접기" : "펼치기"}</button>` : ""}
+        <button data-ans="read" data-id="${esc(n.id)}">크게 보기</button></div></div>`;
   }
   if (!n.log || !n.log.length) return "";
   const last = n.log[n.log.length - 1];
@@ -761,6 +806,45 @@ async function refresh() {
 }
 refresh();
 setInterval(refresh, 2000);
+
+// ── AI 답 펼치기 · 크게 보기(읽기 창) ──
+document.addEventListener("click", e => {
+  const b = e.target.closest("button[data-ans]");
+  if (!b) return;
+  if (b.dataset.ans === "toggle") {
+    const key = b.dataset.key;
+    if (OPEN_LOGS.has(key)) OPEN_LOGS.delete(key); else OPEN_LOGS.add(key);
+    const el = b.closest("[data-project]");
+    renderDone(el, el._row); renderQueue(el, el._row);
+  } else if (b.dataset.ans === "read") {
+    const el = b.closest("[data-project]");
+    openReader(el._row, b.dataset.id);
+  }
+});
+const reader = document.getElementById("reader"), readerSheet = document.getElementById("reader-sheet");
+function openReader(row, id) {
+  const n = row.notes.find(x => x.id === id);
+  if (!n || !n.result) return;
+  const r = n.result;
+  readerSheet.innerHTML = `<div class="rtop">${resultTag(r.label, r.kind)}<span class="meta">${esc(row.name)} · ${esc(n.id)} · ${esc(time(r.at))}</span><span class="sp"></span>
+      <button data-reader="copy">복사</button><button data-reader="close">닫기 (Esc)</button></div>
+    <h2>${esc(r.headline)}</h2>
+    <div class="memo">내가 적은 메모: ${esc(n.text)}</div>
+    <div class="mdx">${md(r.detail || "(자세한 설명 없음)")}</div>
+    ${(r.files || []).length ? `<div class="rfiles">바꾼 파일 ${r.files.map(f => `<code>${esc(f)}</code>`).join(" ")}</div>` : ""}`;
+  readerSheet.dataset.copy = `${r.headline}\n\n${r.detail || ""}`;
+  reader.classList.remove("hidden");
+}
+reader.addEventListener("click", async e => {
+  const b = e.target.closest("button[data-reader]");
+  if (e.target === reader || b?.dataset.reader === "close") { reader.classList.add("hidden"); return; }
+  if (b?.dataset.reader === "copy") {
+    try { await navigator.clipboard.writeText(readerSheet.dataset.copy); b.textContent = "복사함 ✔"; }
+    catch { b.textContent = "복사 못 함"; }
+    setTimeout(() => { b.textContent = "복사"; }, 1500);
+  }
+});
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !reader.classList.contains("hidden")) reader.classList.add("hidden"); });
 
 // ── 환경 점검 팝업 — 켤 때마다 확인한다. 필수가 다 될 때까지 닫을 수 없다(2026-10-14 사용자 요청) ──
 // 개발자가 아닌 사람도 쓴다 — 지금 할 일 하나를 강조하고, 설치 · 로그인 창이 끝나면 저절로 다시 확인해 ✔ 로 바꾼다.

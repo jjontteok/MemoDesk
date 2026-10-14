@@ -12,6 +12,75 @@ function tok(n) {
   if (Number(v.toFixed(1)) >= 1000 && i < units.length - 1) { v /= 1000; i++; }
   return v.toFixed(1) + units[i];
 }
+// AI 답(마크다운)을 읽기 좋게 — 먼저 전부 esc 해서 AI 가 쓴 HTML 은 실행되지 않게 하고, 그 위에 서식만 입힌다.
+// 제목(# ~ ####) · 굵게 · 기울임 · `코드` · 코드 블록 · 목록(- * 1.) · 체크(- [ ]) · 표 · 인용(>) · 구분선 · 링크(http/https 만)
+function mdInline(s) {
+  return s
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|[^*])\*([^*\s][^*]*)\*/g, "$1<em>$2</em>")
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+}
+function md(text) {
+  const lines = esc(String(text ?? "").replace(/\r/g, "")).split("\n");
+  const out = [];
+  let i = 0;
+  const isTable = l => /^\s*\|.*\|\s*$/.test(l);
+  while (i < lines.length) {
+    const line = lines[i];
+    if (/^\s*```/.test(line)) {                       // 코드 블록
+      const buf = []; i++;
+      while (i < lines.length && !/^\s*```/.test(lines[i])) buf.push(lines[i++]);
+      i++; out.push(`<pre class="md-code">${buf.join("\n")}</pre>`); continue;
+    }
+    const h = /^(#{1,4})\s+(.*)$/.exec(line);
+    if (h) { out.push(`<h${h[1].length + 2} class="md-h">${mdInline(h[2])}</h${h[1].length + 2}>`); i++; continue; }
+    if (/^\s*(---|\*\*\*)\s*$/.test(line)) { out.push("<hr>"); i++; continue; }
+    if (/^\s*&gt;\s?/.test(line)) {                   // 인용
+      const buf = [];
+      while (i < lines.length && /^\s*&gt;\s?/.test(lines[i])) buf.push(lines[i++].replace(/^\s*&gt;\s?/, ""));
+      out.push(`<blockquote>${buf.map(mdInline).join("<br>")}</blockquote>`); continue;
+    }
+    if (isTable(line) && i + 1 < lines.length && /^\s*\|[\s:|-]+\|\s*$/.test(lines[i + 1])) {   // 표
+      const cells = l => l.trim().replace(/^\||\|$/g, "").split("|").map(x => mdInline(x.trim()));
+      const head = cells(line); i += 2;
+      const rows = [];
+      while (i < lines.length && isTable(lines[i])) rows.push(cells(lines[i++]));
+      out.push(`<div class="md-table"><table><tr>${head.map(x => `<th>${x}</th>`).join("")}</tr>${rows.map(r => `<tr>${r.map(x => `<td>${x}</td>`).join("")}</tr>`).join("")}</table></div>`);
+      continue;
+    }
+    const li = /^(\s*)([-*]|\d+[.)])\s+(.*)$/.exec(line);
+    if (li) {                                           // 목록(한 단계 들여쓰기까지)
+      const ordered = /\d/.test(li[2]);
+      const items = [];
+      while (i < lines.length) {
+        const m = /^(\s*)([-*]|\d+[.)])\s+(.*)$/.exec(lines[i]);
+        if (!m) { if (lines[i].trim() && items.length && /^\s{2,}/.test(lines[i])) { items[items.length - 1].text += " " + lines[i].trim(); i++; continue; } break; }
+        let body = m[3], cls = "";
+        const box = /^\[( |x|X)\]\s+(.*)$/.exec(body);
+        if (box) { cls = box[1] === " " ? "todo" : "done"; body = (box[1] === " " ? "☐ " : "☑ ") + box[2]; }
+        items.push({ deep: m[1].length >= 2, text: body, cls });
+        i++;
+      }
+      const tag = ordered ? "ol" : "ul";
+      let html = `<${tag} class="md-list">`;
+      for (const it of items) html += `<li class="${it.deep ? "deep " : ""}${it.cls}">${mdInline(it.text)}</li>`;
+      out.push(html + `</${tag}>`); continue;
+    }
+    if (!line.trim()) { i++; continue; }
+    const buf = [];                                     // 문단
+    while (i < lines.length && lines[i].trim() && !/^(#{1,4}\s|\s*([-*]|\d+[.)])\s|\s*```|\s*&gt;)/.test(lines[i]) && !isTable(lines[i])) buf.push(lines[i++]);
+    out.push(`<p>${buf.map(mdInline).join("<br>")}</p>`);
+  }
+  return out.join("");
+}
+// 미리보기 — 서식을 걷어 낸 앞부분(접혀 있을 때 보인다)
+function mdPlain(text, n = 160) {
+  const s = String(text ?? "").replace(/```[\s\S]*?```/g, " ").replace(/^\s*\|?[\s:|-]+\|?\s*$/gm, " ").replace(/^#+\s*/gm, "").replace(/^\s*[-*]\s+(\[[ xX]\]\s+)?/gm, "· ")
+    .replace(/\*\*|__|`/g, "").replace(/\|/g, " ").replace(/\s+/g, " ").trim();
+  return s.length > n ? s.slice(0, n) + "…" : s;
+}
+
 async function postJson(path, body) {
   const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-Desk": "1" }, body: JSON.stringify(body) });
   return { res, data: await res.json().catch(() => ({})) };

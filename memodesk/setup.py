@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import shutil
@@ -213,18 +214,79 @@ def pick_folder(title: str = "AI 가 고칠 폴더를 고르세요") -> str:
 
 _picker_lock = threading.Lock()
 
+# 탐색기 모양 폴더 선택 창(Windows Vista+ 공통 파일 대화상자, IFileOpenDialog + FOS_PICKFOLDERS) — 브라우저의 파일 선택 창과
+# 같은 모양이다. 2026-10-14 사용자 요청: 예전 트리 모양(FolderBrowserDialog)이 아니라 "파일 선택할 때 뜨는 창처럼".
+# 브라우저 자체의 폴더 선택(webkitdirectory · showDirectoryPicker)은 보안상 전체 경로를 주지 않아 쓸 수 없다.
+_PICKER_CS = r"""
+using System;
+using System.Runtime.InteropServices;
+public static class MemoDeskFolderPicker {
+  [ComImport, Guid("DC1C5A9C-E88A-4dde-A5A1-60F82A20AEF7")] class FileOpenDialogRCW {}
+  [ComImport, Guid("42f85136-db7e-439c-85f1-e4075d135fc8"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  interface IFileDialog {
+    [PreserveSig] int Show(IntPtr parent);
+    void SetFileTypes(uint cFileTypes, IntPtr rgFilterSpec);
+    void SetFileTypeIndex(uint iFileType);
+    void GetFileTypeIndex(out uint piFileType);
+    void Advise(IntPtr pfde, out uint pdwCookie);
+    void Unadvise(uint dwCookie);
+    void SetOptions(uint fos);
+    void GetOptions(out uint pfos);
+    void SetDefaultFolder(IShellItem psi);
+    void SetFolder(IShellItem psi);
+    void GetFolder(out IShellItem ppsi);
+    void GetCurrentSelection(out IShellItem ppsi);
+    void SetFileName([MarshalAs(UnmanagedType.LPWStr)] string pszName);
+    void GetFileName([MarshalAs(UnmanagedType.LPWStr)] out string pszName);
+    void SetTitle([MarshalAs(UnmanagedType.LPWStr)] string pszTitle);
+    void SetOkButtonLabel([MarshalAs(UnmanagedType.LPWStr)] string pszText);
+    void SetFileNameLabel([MarshalAs(UnmanagedType.LPWStr)] string pszLabel);
+    void GetResult(out IShellItem ppsi);
+  }
+  [ComImport, Guid("43826D1E-E718-42EE-BC55-A1E261C37BFE"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  interface IShellItem {
+    void BindToHandler(IntPtr pbc, ref Guid bhid, ref Guid riid, out IntPtr ppv);
+    void GetParent(out IShellItem ppsi);
+    void GetDisplayName(uint sigdnName, out IntPtr ppszName);
+  }
+  public static string Pick(string title, string okLabel, IntPtr owner) {
+    IFileDialog dlg = (IFileDialog)new FileOpenDialogRCW();
+    dlg.SetOptions(0x20 | 0x40 | 0x800);   // FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST
+    dlg.SetTitle(title);
+    dlg.SetOkButtonLabel(okLabel);
+    if (dlg.Show(owner) != 0) return "";   // 취소
+    IShellItem item; dlg.GetResult(out item);
+    IntPtr p; item.GetDisplayName(0x80058000, out p);   // SIGDN_FILESYSPATH
+    string path = Marshal.PtrToStringUni(p); Marshal.FreeCoTaskMem(p);
+    return path;
+  }
+}
+"""
+
+
+def picker_script(title: str) -> str:
+    """폴더 선택 창을 띄우는 PowerShell. 탐색기 모양 창을 만들지 못하면(아주 옛 Windows 등) 예전 트리 모양 창으로 대신한다.
+    브라우저 뒤에 숨지 않게 화면에 실제로 띄운 맨 위 고정 창(투명)을 주인으로 준다 — 만들기만 하고 띄우지 않으면
+    맨 위 고정이 안 먹어 창이 안 보인 채로 기다렸다(실측 2026-10-14)."""
+    return (
+        "Add-Type -AssemblyName System.Windows.Forms; "
+        "$owner = New-Object System.Windows.Forms.Form -Property @{TopMost = $true; ShowInTaskbar = $false; "
+        "Opacity = 0; FormBorderStyle = 'None'; StartPosition = 'CenterScreen'; Width = 1; Height = 1}; "
+        "$owner.Show(); $owner.Activate(); $picked = ''; "
+        f"try {{ Add-Type -TypeDefinition @'\n{_PICKER_CS}\n'@ -Language CSharp; "
+        f"$picked = [MemoDeskFolderPicker]::Pick('{_ps_quote(title)}', '이 폴더 선택', $owner.Handle) }} "
+        "catch { $d = New-Object System.Windows.Forms.FolderBrowserDialog; "
+        f"$d.Description = '{_ps_quote(title)}'; $d.ShowNewFolderButton = $true; "
+        "if ($d.ShowDialog($owner) -eq [System.Windows.Forms.DialogResult]::OK) { $picked = $d.SelectedPath } }; "
+        "$owner.Close(); [Console]::OutputEncoding = [Text.Encoding]::UTF8; [Console]::Out.Write($picked)"
+    )
+
 
 def _pick_folder(title: str) -> str:
-    script = ("Add-Type -AssemblyName System.Windows.Forms; "
-              "$owner = New-Object System.Windows.Forms.Form -Property @{TopMost = $true; ShowInTaskbar = $false; "
-              "Opacity = 0; FormBorderStyle = 'None'; StartPosition = 'CenterScreen'; Width = 1; Height = 1}; "
-              "$owner.Show(); $owner.Activate(); "
-              "$d = New-Object System.Windows.Forms.FolderBrowserDialog; "
-              f"$d.Description = '{_ps_quote(title)}'; $d.ShowNewFolderButton = $true; "
-              "$ok = $d.ShowDialog($owner) -eq [System.Windows.Forms.DialogResult]::OK; $owner.Close(); "
-              "if ($ok) { [Console]::OutputEncoding = [Text.Encoding]::UTF8; [Console]::Out.Write($d.SelectedPath) }")
+    # C# 코드에 따옴표 · 줄바꿈이 많아 명령줄 따옴표 대신 -EncodedCommand(UTF-16 base64)로 넘긴다
+    encoded = base64.b64encode(picker_script(title).encode("utf-16-le")).decode("ascii")
     try:
-        out = subprocess.run(["powershell", "-NoProfile", "-STA", "-Command", script], capture_output=True,
+        out = subprocess.run(["powershell", "-NoProfile", "-STA", "-EncodedCommand", encoded], capture_output=True,
                              timeout=600, creationflags=subprocess.CREATE_NO_WINDOW)
     except subprocess.TimeoutExpired as exc:
         raise ValueError("폴더 고르기 창이 너무 오래 열려 있었습니다") from exc

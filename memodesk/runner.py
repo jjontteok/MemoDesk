@@ -254,9 +254,10 @@ def kill_tree(proc: subprocess.Popen) -> None:
 
 # ── 작업 실행 ────────────────────────────────────────────────────────────────
 
-def job_env() -> dict:
+def job_env(ai: str = "") -> dict:
     # 설치 직후에도 AI 프로그램 · node 를 찾게 기본 설치 자리를 PATH 앞에 붙인 환경(setup.tool_env)
-    return dict(setup.tool_env(), PYTHONIOENCODING="utf-8", PYTHONUTF8="1")
+    # + 그 AI 의 지금 계정 폴더(accounts.py). 계정을 바꾸면 다음 작업부터 — 도는 작업은 시작할 때의 계정 그대로
+    return dict(setup.tool_env(ai), PYTHONIOENCODING="utf-8", PYTHONUTF8="1")
 
 
 def run_job(job: Job) -> None:
@@ -270,7 +271,7 @@ def run_job(job: Job) -> None:
             write_log(job, f"▶ {label}: {' '.join(cmd)}")
             flags = subprocess.CREATE_NEW_PROCESS_GROUP if IS_WINDOWS else 0
             with job.log_path.open("a", encoding="utf-8") as out:
-                job.proc = subprocess.Popen(cmd, cwd=cwd, stdout=out, stderr=subprocess.STDOUT, env=job_env(),
+                job.proc = subprocess.Popen(cmd, cwd=cwd, stdout=out, stderr=subprocess.STDOUT, env=job_env(job.ai),
                                             creationflags=flags)
                 rc = job.proc.wait()
             job.results[label] = rc

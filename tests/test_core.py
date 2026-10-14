@@ -21,7 +21,7 @@ _TMP = tempfile.TemporaryDirectory()
 os.environ["MEMODESK_DATA"] = _TMP.name
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from memodesk import config, failures, notes, projects, providers, runner, server, setup  # noqa: E402
+from memodesk import accounts, config, failures, notes, projects, providers, runner, server, setup  # noqa: E402
 
 
 def reset_data() -> None:
@@ -268,6 +268,59 @@ class SetupTests(unittest.TestCase):
         finally:
             ai_clients._call = old
 
+
+
+class AccountTests(unittest.TestCase):
+    """계정 바꾸기 — 계정마다 폴더가 따로(data/accounts/<AI>/<이름>). 로그인 창은 띄우지 않는다."""
+
+    def setUp(self) -> None:
+        reset_data()
+
+    def test_new_account_switches_env_and_default_clears_it(self) -> None:
+        self.assertEqual(accounts.env_for("claude"), {})
+        accounts.create("claude", "회사")
+        home = str(config.DATA_DIR / "accounts" / "claude" / "회사")
+        self.assertEqual(accounts.env_for("claude"), {"CLAUDE_CONFIG_DIR": home})
+        self.assertEqual(setup.tool_env("claude")["CLAUDE_CONFIG_DIR"], home)
+        self.assertEqual(runner.job_env("claude")["CLAUDE_CONFIG_DIR"], home)
+        self.assertNotIn("CLAUDE_CONFIG_DIR", setup.tool_env("codex"))   # 다른 AI 에는 안 붙는다
+        self.assertEqual(accounts.verified_key("claude"), "claude@회사")
+        accounts.use("claude", "")
+        self.assertNotIn("CLAUDE_CONFIG_DIR", setup.tool_env("claude"))
+        self.assertEqual(accounts.verified_key("claude"), "claude")
+
+    def test_codex_and_gemini_use_their_own_variables(self) -> None:
+        accounts.create("codex", "a")
+        accounts.create("gemini", "b")
+        self.assertIn("CODEX_HOME", setup.tool_env("codex"))
+        self.assertIn("GEMINI_CLI_HOME", setup.tool_env("gemini"))
+
+    def test_rejects_bad_names_duplicates_and_single_account_ais(self) -> None:
+        for bad in ("", "../x", "a b", "x" * 31):
+            with self.assertRaises(ValueError):
+                accounts.create("claude", bad)
+        accounts.create("claude", "개인2")
+        with self.assertRaises(ValueError):
+            accounts.create("claude", "개인2")
+        for ai in ("copilot", "cursor"):
+            with self.assertRaises(ValueError):
+                accounts.create(ai, "x")
+        with self.assertRaises(ValueError):
+            accounts.use("claude", "없는계정")
+
+    def test_forget_moves_folder_and_falls_back_to_default(self) -> None:
+        accounts.create("codex", "회사")
+        (config.DATA_DIR / "accounts" / "codex" / "회사" / "auth.json").write_text("{}", encoding="utf-8")
+        dest = accounts.forget("codex", "회사")
+        self.assertTrue((dest / "auth.json").is_file())   # 지우지 않고 옮긴다
+        self.assertEqual(accounts.current("codex"), "")
+        self.assertEqual(accounts.names("codex"), [])
+
+    def test_login_step_carries_account_state(self) -> None:
+        accounts.create("claude", "회사")
+        acc = accounts.state("claude")
+        self.assertEqual(acc, {"supported": True, "names": ["회사"], "current": "회사"})
+        self.assertFalse(accounts.state("copilot")["supported"])
 
 
 class ApiTests(unittest.TestCase):

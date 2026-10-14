@@ -49,6 +49,13 @@ python -B -m memodesk            # http://127.0.0.1:8791
 python -B -m memodesk --port 8800 --no-notify
 ```
 
+### AI 계정 바꾸기
+
+[환경 점검] → AI 마다 **쓸 계정** 목록에서 고릅니다(다음 작업부터). [새 계정 추가]는 MemoDesk 전용 계정 폴더
+(`data/accounts/<AI>/<이름>/`)를 만들고 그 폴더에 로그인합니다 — **이 PC 의 다른 프로그램(터미널의 Claude Code 등) 계정은 바뀌지 않습니다**.
+Claude(`CLAUDE_CONFIG_DIR`) · Codex(`CODEX_HOME`) · Gemini(`GEMINI_CLI_HOME`) 가 됩니다. Copilot · Cursor 는 PC 에 계정이 하나라
+[다시 로그인]으로 바꾸고, 그러면 그 PC 의 그 AI 계정이 같이 바뀝니다. [목록에서 빼기]는 폴더를 지우지 않고 `data/accounts/removed/` 로 옮깁니다.
+
 ## 쓰는 법
 
 1. 왼쪽 **[+ 프로젝트 추가]** — 이름, AI 가 고칠 폴더의 **전체 경로**, 묶음(선택)을 적습니다.
@@ -81,7 +88,8 @@ python -B -m memodesk --port 8800 --no-notify
 모든 기록은 `data/` 에 남고 git 에 올라가지 않습니다(`.gitignore`). 프로젝트 폴더에는 아무것도 쓰지 않습니다.
 
 ```text
-data/config.json                      포트 · 모델 · 프로젝트 목록
+data/config.json                      포트 · 모델 · 프로젝트 목록 · 쓰는 계정
+data/accounts/{AI}/{이름}/              MemoDesk 전용 AI 계정(로그인 정보 — 남에게 주지 마세요)
 data/projects/{id}/notes.json         메모
 data/projects/{id}/jobs/ · jobs.jsonl 작업 로그 · 이력
 data/projects/{id}/backup/            작업 전 백업
@@ -144,6 +152,13 @@ Afterwards, double-click **`MemoDesk.bat`** (if it is already running, it just o
 python -B -m memodesk            # http://127.0.0.1:8791
 ```
 Closing the server window stops it; an interrupted job is rolled back on the next start and that project is paused.
+
+### Switching AI accounts
+
+In [환경 점검 / Environment check], pick an account from each AI's **account** list (applies from the next job). [새 계정 추가 / Add account]
+creates a MemoDesk-only account folder (`data/accounts/<AI>/<name>/`) and logs in there — **other programs on this PC keep their accounts**.
+Supported for Claude (`CLAUDE_CONFIG_DIR`), Codex (`CODEX_HOME`) and Gemini (`GEMINI_CLI_HOME`). Copilot and Cursor keep one login per PC,
+so switching means logging in again, which changes that AI's account for the whole PC. Removing an account moves its folder to `data/accounts/removed/` instead of deleting it.
 
 ## How to use
 

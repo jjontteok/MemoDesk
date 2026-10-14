@@ -181,7 +181,8 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/pick-folder":
                 return self.send_json({"ok": True, "path": setup.pick_folder()})
             if path == "/api/setup/run":
-                return self.send_json({"ok": True, **setup.run_action(str(body.get("action", "")), str(body.get("value", "")))})
+                return self.send_json({"ok": True, **setup.run_action(str(body.get("action", "")), str(body.get("value", "")),
+                                                                  str(body.get("name", "")).strip())})
             if path.startswith("/api/projects/"):
                 return self.send_json({"ok": True, **self.post_project(path, body)})
             self.post_note(path, body)

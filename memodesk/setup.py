@@ -30,7 +30,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from memodesk import config, providers
+from memodesk import accounts, config, providers
 from memodesk.notes import KST
 
 IS_WINDOWS = os.name == "nt"
@@ -40,8 +40,9 @@ _cache: dict = {"at": 0.0, "data": None}
 _lock = threading.Lock()
 
 
-def tool_env() -> dict:
-    """AI 프로그램 · node · git 을 부를 환경. 설치 직후에도 찾게 기본 설치 자리를 PATH 앞에 붙인다."""
+def tool_env(ai: str = "") -> dict:
+    """AI 프로그램 · node · git 을 부를 환경. 설치 직후에도 찾게 기본 설치 자리를 PATH 앞에 붙인다.
+    ai 를 주면 그 AI 의 지금 계정 폴더도 알려 준다(accounts.py — 계정마다 폴더가 따로)."""
     extra = [Path.home() / ".local" / "bin"]
     if IS_WINDOWS:
         if os.environ.get("APPDATA"):
@@ -52,13 +53,17 @@ def tool_env() -> dict:
     if node:
         extra.insert(0, Path(node).parent)
     path = os.pathsep.join([str(p) for p in extra if p.is_dir()] + [os.environ.get("PATH", "")])
-    return {**os.environ, "PATH": path}
+    env = {**os.environ, "PATH": path}
+    if ai in accounts.ENV_VAR:
+        env.pop(accounts.ENV_VAR[ai], None)   # 기본 계정 = 이 PC 의 원래 자리(켠 터미널이 넣어 둔 값도 쓰지 않는다)
+        env.update(accounts.env_for(ai))
+    return env
 
 
-def _run(cmd: list[str], timeout: int = 30) -> tuple[int, str]:
+def _run(cmd: list[str], timeout: int = 30, ai: str = "") -> tuple[int, str]:
     try:
         out = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout,
-                             env=tool_env(), creationflags=subprocess.CREATE_NO_WINDOW if IS_WINDOWS else 0)
+                             env=tool_env(ai), creationflags=subprocess.CREATE_NO_WINDOW if IS_WINDOWS else 0)
     except (OSError, subprocess.TimeoutExpired) as exc:
         return -1, str(exc)
     return out.returncode, (out.stdout or "") + (out.stderr or "")
@@ -117,7 +122,7 @@ def ready_ais() -> list[str]:
 def _login_status(pid: str, cli: str) -> dict:
     kind = providers.get(pid)["status"]
     if kind == "claude_auth":
-        code, text = _run([cli, "auth", "status"], timeout=30)
+        code, text = _run([cli, "auth", "status"], timeout=30, ai=pid)
         try:
             data = json.loads(text[text.index("{"):]) if "{" in text else {}
         except ValueError:
@@ -128,19 +133,19 @@ def _login_status(pid: str, cli: str) -> dict:
             return {"ok": True, "detail": " · ".join(x for x in (who, plan) if x) or "로그인됨"}
         return {"ok": False, "detail": "로그인되어 있지 않습니다" if data else f"로그인 상태를 읽지 못했습니다: {text.strip()[:120]}"}
     if kind == "codex_login":
-        code, text = _run([cli, "login", "status"], timeout=30)
-        line = next((l.strip() for l in text.splitlines() if l.strip()), "")
+        code, text = _run([cli, "login", "status"], timeout=30, ai=pid)
+        line = next((l.strip() for l in text.splitlines() if l.strip() and not l.lstrip().startswith("WARNING")), "")
         ok = code == 0 and "logged in" in text.lower() and "not logged in" not in text.lower()
         return {"ok": ok, "detail": line or ("로그인됨" if ok else "로그인되어 있지 않습니다")}
     if kind == "cursor_status":
-        code, text = _run([cli, "status"], timeout=30)
+        code, text = _run([cli, "status"], timeout=30, ai=pid)
         low = text.lower()
         if code == 0 and ("logged in" in low or "authenticated" in low) and "not logged in" not in low and "not authenticated" not in low:
             line = next((l.strip() for l in text.splitlines() if l.strip()), "로그인됨")
             return {"ok": True, "detail": line[:120]}
         return {"ok": False, "detail": "로그인되어 있지 않습니다" if code == 0 or "not" in low else f"로그인 상태를 읽지 못했습니다: {text.strip()[:120]}"}
     # real_call — 확인 명령이 없다. 마지막으로 실제 호출이 된 시각을 기억해 둔다
-    verified = (config.load().get("verified") or {}).get(pid)
+    verified = (config.load().get("verified") or {}).get(accounts.verified_key(pid))
     if verified:
         return {"ok": True, "detail": f"확인됨 · {verified[:16].replace('T', ' ')}"}
     return {"ok": False, "detail": "로그인한 뒤 [로그인 확인]을 누르세요(한 번 실제로 불러 봅니다)"}
@@ -180,9 +185,13 @@ def _ai_steps(ai: str) -> list[dict]:
                           "메모를 읽고 일하는 AI 프로그램입니다. [설치하기]를 누르면 새 창에서 설치됩니다(1~3분)."})
     login = _login_status(ai, cli) if cli_state["ok"] else {"ok": False, "detail": "AI 프로그램을 먼저 설치하세요"}
     real_call = info["status"] == "real_call"
+    acc = accounts.state(ai)
+    if acc["supported"]:
+        login = {**login, "detail": f"[{accounts.label(ai)}] {login['detail']}"}
     steps.append({"id": f"{ai}:login", "ai": ai, "name": f"AI 계정 로그인 ({info['name']})", "required": True, **login,
                   "action": "" if login["ok"] or not cli_state["ok"] else "login",
                   "action2": "verify_login" if real_call and cli_state["ok"] and not login["ok"] else "",
+                  "accounts": acc if cli_state["ok"] else None,   # 계정 바꾸기 칸(프로그램이 있어야 로그인할 수 있다)
                   "help": info["plan"] + " [로그인하기]를 누르면 새 창이 열립니다 — " + info["login_hint"]})
     return steps
 
@@ -234,7 +243,7 @@ def _ps_quote(text: str) -> str:
     return text.replace("'", "''")
 
 
-def _console(title: str, intro: str, script: str) -> None:
+def _console(title: str, intro: str, script: str, ai: str = "") -> None:
     """보이는 새 PowerShell 창에서 돌린다 — 사람이 진행 상황을 본다. 실패하면 이유를 빨갛게 남기고 창을 둔다."""
     full = (f"$Host.UI.RawUI.WindowTitle = '{_ps_quote(title)}'; [Console]::OutputEncoding = [Text.Encoding]::UTF8; "
             f"Write-Host '{_ps_quote(intro)}' -ForegroundColor Cyan; Write-Host ''; "
@@ -245,7 +254,7 @@ def _console(title: str, intro: str, script: str) -> None:
             "catch { Write-Host ''; Write-Host ('문제가 생겼습니다: ' + $_.Exception.Message) -ForegroundColor Red; "
             "Write-Host '이 창의 내용을 캡처해 담당자에게 보내 주세요.' -ForegroundColor Yellow }")
     subprocess.Popen(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-NoExit", "-Command", full],
-                     env=tool_env(), creationflags=subprocess.CREATE_NEW_CONSOLE)
+                     env=tool_env(ai), creationflags=subprocess.CREATE_NEW_CONSOLE)
 
 
 # Git for Windows — winget 이 있으면 그것으로, 없으면(회사 PC · 옛 Windows 에 흔하다 — 실측: 이 작업 PC 에도 없었다)
@@ -280,8 +289,8 @@ NPM_FIND = ("$npm = (Get-Command npm -ErrorAction SilentlyContinue).Source; "
             "if (-not (Test-Path $npm)) { throw 'npm 을 찾지 못했습니다 — Node.js 를 먼저 설치하세요' }; ")
 
 
-def run_action(action: str, value: str = "") -> dict:
-    """버튼 — 고정된 명령만 돈다. Windows 가 아니면 손으로 칠 명령을 돌려준다."""
+def run_action(action: str, value: str = "", name: str = "") -> dict:
+    """버튼 — 고정된 명령만 돈다. Windows 가 아니면 손으로 칠 명령을 돌려준다. name = 계정 이름(계정 버튼)."""
     with _lock:
         _cache["data"] = None   # 끝난 뒤 새로 재게
     if action == "add":
@@ -318,11 +327,24 @@ def run_action(action: str, value: str = "") -> dict:
             script = info["install_ps"]
         _console(f"{info['cli_name']} 설치", f"AI 프로그램({info['cli_name']})을 설치합니다. 1~3분 걸립니다. 끝날 때까지 이 창을 닫지 마세요.", script)
         return {"opened": True}
+    if action == "account_use":
+        accounts.use(ai, name)
+        return {"account": accounts.label(ai)}
+    if action == "account_forget":
+        accounts.forget(ai, name)
+        return {"account": accounts.label(ai)}
+    if action == "account_new":
+        accounts.create(ai, name)   # 새 폴더로 바꾼 뒤 그 폴더에 로그인한다
+        action = "login"
     if action == "login":
         if not IS_WINDOWS:
-            return {"manual": " ".join([info["cli"], *info["login_args"]])}
+            prefix = "".join(f"{k}='{v}' " for k, v in accounts.env_for(ai).items())
+            return {"manual": prefix + " ".join([info["cli"], *info["login_args"]])}
         args = " ".join(info["login_args"])
-        _console(f"{info['name']} 로그인", info["login_hint"], f"& '{_ps_quote(cli)}' {args}".strip())
+        where = (f"MemoDesk 전용 계정 [{accounts.label(ai)}] 에 로그인합니다 — 이 PC 의 다른 프로그램 계정은 그대로입니다."
+                 if accounts.current(ai) else
+                 "이 PC 의 기본 계정에 로그인합니다 — 같은 AI 를 쓰는 다른 프로그램의 계정도 같이 바뀝니다.")
+        _console(f"{info['name']} 로그인", f"{where} {info['login_hint']}", f"& '{_ps_quote(cli)}' {args}".strip(), ai=ai)
         return {"opened": True}
     if action in ("try_call", "verify_login"):
         found = providers.find_cli(ai)
@@ -331,7 +353,7 @@ def run_action(action: str, value: str = "") -> dict:
         ok, detail = _ping(ai, found)
         if ok and info["status"] == "real_call":
             verified = dict(config.load().get("verified") or {})
-            verified[ai] = datetime.now(KST).isoformat(timespec="seconds")
+            verified[accounts.verified_key(ai)] = datetime.now(KST).isoformat(timespec="seconds")
             config.update(verified=verified)
         return {"ok": ok, "detail": detail}
     raise ValueError(f"모르는 동작: {action}")
@@ -349,7 +371,7 @@ def _ping(ai: str, cli: str) -> tuple[bool, str]:
         cmd = [cli, "-p", "ok", "--output-format", "json"]
     else:
         cmd = [cli, "-p", "ok 라고만 답해", "--output-format", "json"]
-    code, text = _run(cmd, timeout=180)
+    code, text = _run(cmd, timeout=180, ai=ai)
     if code == 0:
         return True, "AI 가 정상으로 답했습니다"
     return False, text.strip()[-300:] or f"종료 코드 {code}"

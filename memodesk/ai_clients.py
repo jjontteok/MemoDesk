@@ -319,9 +319,16 @@ def make_client(provider: str, cli: str, cwd: Path, add_dirs: tuple[str, ...], e
 
 # ── 모델 목록 ───────────────────────────────────────────────────────────────
 
+def _account_home(ai: str, default: Path) -> Path:
+    """지금 계정 폴더(accounts.py). 기본 계정이거나 그 폴더에 아직 목록이 없으면(막 로그인함) 기본 자리."""
+    from memodesk import accounts   # 늦게 — accounts 가 config 를 읽는다
+    home = accounts.folder(ai)
+    return home if home and any(home.iterdir()) else default
+
+
 def claude_models() -> list[dict]:
     """Claude Code 가 받아 둔 모델 목록(~/.claude/cache/model-catalog/*-cc.json). 못 읽으면 CLI 가 받는 별칭 몇 개."""
-    folder = Path.home() / ".claude" / "cache" / "model-catalog"
+    folder = _account_home("claude", Path.home() / ".claude") / "cache" / "model-catalog"
     paths = sorted(folder.glob("*-cc.json"), key=lambda p: p.stat().st_mtime, reverse=True) if folder.is_dir() else []
     for path in paths:
         try:
@@ -344,7 +351,7 @@ def claude_models() -> list[dict]:
 def codex_models() -> list[dict]:
     """Codex CLI 가 받아 둔 모델 목록(~/.codex/models_cache.json, 보이는 것만, 추천 순)."""
     try:
-        models = json.loads((Path.home() / ".codex" / "models_cache.json").read_text(encoding="utf-8")).get("models", [])
+        models = json.loads((_account_home("codex", Path.home() / ".codex") / "models_cache.json").read_text(encoding="utf-8")).get("models", [])
     except (OSError, json.JSONDecodeError, AttributeError):
         return []
     out = []

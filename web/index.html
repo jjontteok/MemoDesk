@@ -688,7 +688,8 @@ function renderDone(el, row) {
   if (pickingKind(el)) return;
   const num = n => parseInt(String(n.id).slice(1), 10) || 0;   // 최근에 적은 메모가 맨 위
   const done = row.notes.filter(n => !["working", "queued"].includes(n.status))
-    .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")) || num(b) - num(a));
+    // 다시 맡긴 메모는 다시 맡긴 시각으로 — 처리되면 원래 자리가 아니라 맨 위로(2026-10-14 사용자 요청)
+    .sort((a, b) => String(b.requeued_at || b.created_at || "").localeCompare(String(a.requeued_at || a.created_at || "")) || num(b) - num(a));
   el.querySelector(".dhead").textContent = done.length ? `처리된 메모 ${done.length}개` : "";
   const list = el.querySelector(".notes");
   const scrolled = list.scrollTop;

@@ -70,6 +70,16 @@ class NotesTests(unittest.TestCase):
         notes.set_ai(self.dir, b["id"], "codex")
         self.assertEqual([[n["id"] for n in g] for _, g in notes.runnable_groups(notes.load(self.dir))], [[a["id"]]])
 
+    def test_requeue_stamps_requeued_at(self) -> None:
+        """다시 맡기면 requeued_at — 처리된 메모 목록에서 맨 위로(2026-10-14). 멈춤으로 대기로 돌아가는 것은 아니다."""
+        note = notes.add(self.dir, "버튼 크게")
+        notes.set_status(self.dir, [note["id"]], "working")
+        notes.set_status(self.dir, [note["id"]], "queued", "멈춤")
+        self.assertNotIn("requeued_at", notes.load(self.dir)[0])
+        notes.set_status(self.dir, [note["id"]], "review")
+        notes.refine(self.dir, note["id"], "조금 더")
+        self.assertIn("requeued_at", notes.load(self.dir)[0])
+
     def test_refine_keeps_previous_result_for_prompt(self) -> None:
         a = notes.add(self.dir, "버튼 글자 바꾸기")
         notes.set_result(self.dir, a["id"], "review", {"label": "고침", "headline": "바꿨어요", "detail": "- 글자", "files": ["a.html"]})

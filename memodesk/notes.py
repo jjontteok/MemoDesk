@@ -137,6 +137,10 @@ def set_status(folder: Path, ids: list[str], status: str, message: str = "") -> 
         raise ValueError("사람이 처리할 메모는 AI 에게 맡기지 않는다 — 맡기려면 종류를 코드로 바꾼다")
     for note in notes:
         if note["id"] in ids:
+            # 처리된 메모를 다시 맡기면(다시 맡기기 · 보완해서 다시 맡기기) 그 시각을 적는다 — 처리된 메모 목록이 처음 적은 시각이 아니라
+            # 이 시각으로 맨 위에 오게(2026-10-14 사용자 요청). 멈춤으로 대기로 돌아가는 것(처리 중 → 대기)은 아니다
+            if status == "queued" and note.get("status") in ("review", "open", "done"):
+                note["requeued_at"] = now()
             note["status"] = status
             note["updated_at"] = now()
             if status in ("queued", "working"):

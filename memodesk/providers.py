@@ -9,6 +9,16 @@
 - Codex — github.com/openai/codex: Windows PowerShell 설치 스크립트 `https://chatgpt.com/codex/install.ps1`(받아지는 것 확인),
   ChatGPT Plus · Pro · Business · Edu · Enterprise 로 로그인. `codex login` · `codex login status` · `codex exec` 옵션은
   설치된 0.158.0 의 --help 로 확인.
+- GitHub Copilot CLI — github.com/github/copilot-cli: Windows 지원, `winget install GitHub.Copilot` · `npm install -g @github/copilot`,
+  Copilot 구독 필요. `copilot login` · `-p`(비대화형) · `-s`(답만) · `--allow-tool write` · `--deny-tool` · `--add-dir` 는
+  `npx @github/copilot --help`(1.0.97)로 확인. **로그인 상태를 묻는 명령이 없다** — 한 번 불러 확인한다.
+- Cursor CLI — cursor.com/docs/cli: Windows 네이티브 `irm 'https://cursor.com/install?win32=true' | iex`(스크립트를 읽어 보니
+  `%LOCALAPPDATA%/cursor-agent/cursor-agent` 로 깔고 `agent` 별칭을 만든다), `login` · `status`, `-p --force --output-format json`
+  ({type, subtype, is_error, result, …}).
+- 지시문이 길고 여러 줄이라 Copilot · Cursor 에는 명령줄로 넘기지 않고 파일로 넘긴다(Windows 의 .cmd 실행 파일은 cmd.exe 를 거쳐
+  줄바꿈 · 특수 문자가 깨진다).
+- 넣지 않은 것: Qwen Code(무료 로그인이 2026-04-15 종료 — 알리바바 유료 플랜 · API 키 필요), OpenCode · Aider(AI 회사별 API 키를
+  직접 넣어야 해 개발자가 아니면 어렵다).
 - Gemini CLI — github.com/google-gemini/gemini-cli: `npm install -g @google/gemini-cli`(Node.js 20 이상 — npm engines),
   Google 로그인 무료(하루 1,000회). `-p`(stdin 뒤에 붙는다) · `--output-format json`({response, stats, error}) ·
   `--approval-mode auto_edit` · `--include-directories`. **로그인 상태를 묻는 명령이 없다** — 한 번 실제로 불러 확인한다.
@@ -74,7 +84,35 @@ PROVIDERS: dict[str, dict] = {
         "default_model": "", "model_hint": "비우면 Gemini 기본(auto)",
     },
 }
-ORDER = ("claude", "codex", "gemini")
+PROVIDERS["copilot"] = {
+    "name": "GitHub Copilot", "company": "GitHub", "cli": "copilot", "cli_name": "Copilot CLI",
+    "plan": "GitHub Copilot 구독이 필요합니다(요금제마다 쓸 수 있는 양이 다릅니다 — GitHub 요금제 안내 참고).",
+    "pitch": "회사에서 GitHub Copilot 을 쓰고 있다면 그 계정으로 씁니다. 지우기 · git 명령을 막을 수 있습니다.",
+    "install_ps": "", "install_sh": "npm install -g @github/copilot",   # Windows 는 winget, 없으면 npm(setup.py)
+    "needs_node": "no_winget", "node_min": 20,
+    "login_args": ["login"],
+    "login_hint": "창에 나오는 코드를 브라우저의 GitHub 페이지에 넣고 승인하세요.",
+    "status": "real_call",
+    "extra_paths": [_npm_bin("copilot"),
+                    (Path(os.environ["LOCALAPPDATA"]) / "Microsoft" / "WinGet" / "Links" / "copilot.exe") if IS_WINDOWS and os.environ.get("LOCALAPPDATA") else None],
+    "default_model": "", "model_hint": "비우면 Copilot 기본 모델",
+}
+PROVIDERS["cursor"] = {
+    "name": "Cursor", "company": "Anysphere", "cli": "cursor-agent", "cli_name": "Cursor CLI",
+    "plan": "Cursor 계정이 필요합니다(요금제마다 쓸 수 있는 양이 다릅니다).",
+    "pitch": "Cursor 편집기를 쓰고 있다면 그 계정으로 씁니다.",
+    "install_ps": "irm 'https://cursor.com/install?win32=true' | iex",
+    "install_sh": "curl https://cursor.com/install -fsS | bash",
+    "needs_node": False,
+    "login_args": ["login"],
+    "login_hint": "브라우저가 열리면 Cursor 계정으로 로그인하세요.",
+    "status": "cursor_status",
+    "extra_paths": [*(Path(os.environ["LOCALAPPDATA"]) / "cursor-agent" / n for n in ("cursor-agent.exe", "cursor-agent.cmd"))]
+    if IS_WINDOWS and os.environ.get("LOCALAPPDATA") else [_home_bin("cursor-agent")],
+    "default_model": "", "model_hint": "비우면 Cursor 기본 모델",
+}
+PROVIDERS["gemini"]["node_min"] = 20
+ORDER = ("claude", "codex", "copilot", "cursor", "gemini")
 
 
 def get(pid: str) -> dict:

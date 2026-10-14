@@ -88,7 +88,8 @@ def main() -> int:
     attach_dir.mkdir(parents=True, exist_ok=True)
     client = make_client(args.provider, args.cli or providers.get(args.provider)["cli"], path,
                          (str(attach_dir), str(removed_dir)), effort=args.effort or "",
-                         allowed=ALLOWED_TOOLS, denied=DENIED_TOOLS, timeout=args.timeout_seconds)
+                         allowed=ALLOWED_TOOLS, denied=DENIED_TOOLS, timeout=args.timeout_seconds,
+                         task_dir=folder / "tasks" / args.stamp)   # Copilot · Cursor 는 지시문을 파일로 받는다
     output = folder / RESULT_NAME
     output.unlink(missing_ok=True)
     print(f"메모 {len(working)}건 · {providers.get(args.provider)['name']} · {project['name']} · {path}")

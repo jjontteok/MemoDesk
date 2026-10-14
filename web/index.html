@@ -698,7 +698,7 @@ function renderUsage(el, row) {
   box.querySelector(".table-wrap").innerHTML = rows.length ? `<table>
     <tr><th class="l">작업 시각</th><th class="l">메모</th><th class="l">AI</th><th>입력 토큰 (캐시)</th><th>출력 토큰</th><th>비용</th><th>시간</th><th class="l">결과</th></tr>
     ${rows.map(u => `<tr><td class="l">${time(u.started) || esc(u.id)}</td><td class="l">${esc((u.note_ids || []).join(", "))}</td>
-      <td class="l">${esc({ claude: "Claude", codex: "ChatGPT (Codex)", gemini: "Gemini" }[u.provider] || u.provider)}${u.model && u.model !== "default" ? ` (${esc(u.model)})` : ""}</td>
+      <td class="l">${esc({ claude: "Claude", codex: "ChatGPT (Codex)", copilot: "GitHub Copilot", cursor: "Cursor", gemini: "Gemini" }[u.provider] || u.provider)}${u.model && u.model !== "default" ? ` (${esc(u.model)})` : ""}</td>
       <td>${tok(u.input)} (${tok(u.cached)})</td><td>${tok(u.output)}</td><td>${u.cost_usd == null ? "-" : "$" + u.cost_usd.toFixed(2)}</td>
       <td>${Math.round(u.seconds)}초</td><td class="l">${JOB[u.state] || esc(u.state)}</td></tr>`).join("")}
     <tr class="sum"><td class="l" colspan="3">합계</td><td>${tok(rows.reduce((s, u) => s + (u.input || 0), 0))} (${tok(rows.reduce((s, u) => s + (u.cached || 0), 0))})</td>

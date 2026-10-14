@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import sys
 import tempfile
 import threading
@@ -166,7 +167,7 @@ class SetupTests(unittest.TestCase):
         data = setup.check(force=True)
         self.assertEqual([i["id"] for i in data["items"]], ["python", "ai"])       # 고르기 전에는 두 줄뿐
         self.assertFalse(data["ready"])
-        self.assertEqual([c["id"] for c in data["providers"]], ["claude", "codex", "gemini"])
+        self.assertEqual([c["id"] for c in data["providers"]], ["claude", "codex", "copilot", "cursor", "gemini"])
         with self.assertRaises(ValueError):
             setup.run_action("install_cli")                                     # 고르기 전엔 설치할 AI 가 없다
 
@@ -178,8 +179,47 @@ class SetupTests(unittest.TestCase):
         setup.run_action("choose", "gemini")
         items = setup.check(force=True)["items"]
         self.assertEqual([i["id"] for i in items], ["python", "ai", "node", "cli", "login"])   # Gemini 는 Node.js 먼저
+        setup.run_action("choose", "cursor")
+        self.assertEqual([i["id"] for i in setup.check(force=True)["items"]], ["python", "ai", "cli", "login"])
+        setup.run_action("choose", "copilot")   # winget 이 있으면 winget 으로, 없으면 npm 으로 깔아 Node.js 가 먼저
+        node_first = not shutil.which("winget")
+        self.assertEqual([i["id"] for i in setup.check(force=True)["items"]],
+                         ["python", "ai", *(["node"] if node_first else []), "cli", "login"])
         with self.assertRaises(ValueError):
             setup.run_action("choose", "nope")
+
+    def test_copilot_and_cursor_get_task_file_not_long_argument(self) -> None:
+        """Copilot · Cursor 는 지시문을 파일로 받는다 — Windows 의 .cmd 실행 파일은 여러 줄 · 특수 문자 인자가 깨진다."""
+        from memodesk import ai_clients
+        captured = {}
+        answer = json.dumps({"notes": [], "summary": "ok"})
+
+        def fake_call(command, prompt, cwd, timeout, name):
+            captured["cmd"] = command
+
+            class Result:
+                stdout = json.dumps({"type": "result", "is_error": False, "result": answer}) if name.startswith("Cursor") else answer
+            return Result()
+
+        old = ai_clients._call
+        ai_clients._call = fake_call
+        try:
+            tmp = Path(tempfile.mkdtemp())
+            schema = config.APP_DIR / "schemas" / "fix_output.schema.json"
+            prompt = "여러 줄\n지시문 % ^ & |"
+            for pid in ("copilot", "cursor"):
+                client = ai_clients.make_client(pid, pid, tmp, (), task_dir=tmp / "tasks")
+                client.run_prompt(prompt, schema, tmp / f"{pid}.json")
+                cmd = captured["cmd"]
+                self.assertNotIn("\n", cmd[cmd.index("-p") + 1])                  # 명령줄에는 한 줄짜리 안내만
+                task = next((tmp / "tasks").glob("task-*.md"))
+                self.assertIn(prompt, task.read_text(encoding="utf-8"))          # 지시문 전체는 파일에
+                self.assertEqual(json.loads((tmp / f"{pid}.json").read_text(encoding="utf-8"))["summary"], "ok")
+                if pid == "copilot":
+                    self.assertEqual(cmd[cmd.index("--deny-tool") + 1], "shell")   # 셸 명령(지우기 · git) 거부
+                task.unlink()
+        finally:
+            ai_clients._call = old
 
     def test_unknown_action_refused(self) -> None:
         setup.run_action("choose", "claude")

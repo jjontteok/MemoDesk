@@ -1,4 +1,4 @@
-"""AI CLI 호출 — Claude · Codex · Gemini. 셋 다 같은 모양으로 부른다: run_prompt(프롬프트, 결과 스키마, 결과 파일, 모델).
+"""AI CLI 호출 — Claude · Codex · Copilot · Cursor · Gemini. 모두 같은 모양으로 부른다: run_prompt(프롬프트, 결과 스키마, 결과 파일, 모델).
 
 모든 호출이 여기를 지나므로 **걸린 시간과 토큰을 여기서 적는다**(`usage.record_call`). 실패해도 걸린 시간은 남긴다.
 
@@ -8,6 +8,8 @@ AI 마다 안전장치가 다르다(providers.py 출처 참고).
   지우기 명령을 따로 막을 수는 없다 — 프롬프트로 금하고, 작업 전 백업 · 되돌림이 지킨다.
 - Gemini: `--approval-mode auto_edit` — 파일 고치기만 자동 승인, 명령 실행은 승인되지 않는다. 결과 스키마 옵션이 없어
   JSON 만 쓰라고 시키고 답에서 JSON 을 꺼낸다.
+- Copilot: 파일 쓰기만 허락, 셸 명령은 거부(지우기 · git 불가). 지시문은 파일로.
+- Cursor: `--force` 로 파일 고치기를 확인 없이 적용. 셸 명령을 막는 옵션은 확인하지 못했다 — 백업 · 되돌림이 지킨다. 지시문은 파일로.
 """
 
 from __future__ import annotations
@@ -170,6 +172,82 @@ class GeminiClient:
         return ({"stats": result.get("stats")} if result.get("stats") else None), None
 
 
+# ── Copilot · Cursor — 지시문은 파일로 넘긴다 ────────────────────────────────
+# 둘 다 지시문을 명령줄 인자(-p "…")로만 받는다. Windows 의 npm · 설치 스크립트 실행 파일은 .cmd 라 cmd.exe 를 거치는데,
+# 여러 줄 · 특수 문자(% ^ & |)가 깨지고 길이도 8,191자로 막힌다. 그래서 지시문 전체를 파일에 쓰고 "이 파일을 읽고 하라" 만 넘긴다.
+
+def _task_file(task_dir: Path, prompt: str, schema: Path) -> Path:
+    task_dir.mkdir(parents=True, exist_ok=True)
+    path = task_dir / f"task-{time.strftime('%Y%m%d-%H%M%S')}.md"
+    path.write_text(prompt + "\n\n## 마지막 답의 모양\n작업을 다 한 뒤 마지막 답에는 아래 JSON 스키마에 맞는 **JSON 객체 하나만** 쓴다"
+                    "(설명 · 코드 블록 표시 없이).\n" + schema_text(schema) + "\n", encoding="utf-8")
+    return path
+
+
+def _pointer(path: Path) -> str:
+    return (f"Read the task file at {path} completely and do exactly what it says. "
+            "Your final answer must be only the JSON object described at the end of that file.")
+
+
+@dataclass(frozen=True)
+class CopilotClient:
+    """GitHub Copilot CLI — `copilot -p … -s`. 파일 쓰기(write)만 허락하고 셸 명령은 허락하지 않는다(지우기 · git 을 못 한다).
+    폴더는 작업 폴더(cwd)와 --add-dir 폴더만."""
+    cli: str
+    cwd: Path
+    task_dir: Path
+    timeout_seconds: int = 2400
+    add_dirs: tuple[str, ...] = ()
+    provider: str = "copilot"
+
+    def run_prompt(self, prompt: str, schema: Path, output_path: Path, model: str | None = None, stage: str | None = None):
+        return _timed(self.provider, stage, model, lambda: self._run(prompt, schema, output_path, model))
+
+    def _run(self, prompt: str, schema: Path, output_path: Path, model: str | None):
+        task = _task_file(self.task_dir, prompt, schema)
+        command = [resolve_executable(self.cli), "-p", _pointer(task), "-s", "--allow-tool", "write",
+                   "--deny-tool", "shell", "--add-dir", str(self.task_dir)]
+        for folder in self.add_dirs:
+            command += ["--add-dir", folder]
+        if model:
+            command += ["--model", model]
+        completed = _call(command, "", self.cwd, self.timeout_seconds, "Copilot CLI")
+        data = json_object_in_text(completed.stdout)
+        if data is None:
+            raise RuntimeError(f"Copilot CLI did not return a JSON answer\nstdout: {completed.stdout[-2000:]}")
+        _write(output_path, data)
+        return None, None
+
+
+@dataclass(frozen=True)
+class CursorClient:
+    """Cursor CLI — `cursor-agent -p --force --output-format json`. --force 는 파일 고치기를 확인 없이 적용한다.
+    셸 명령을 따로 막는 옵션은 확인하지 못했다 — 작업 전 백업 · 되돌림이 지킨다."""
+    cli: str
+    cwd: Path
+    task_dir: Path
+    timeout_seconds: int = 2400
+    provider: str = "cursor"
+
+    def run_prompt(self, prompt: str, schema: Path, output_path: Path, model: str | None = None, stage: str | None = None):
+        return _timed(self.provider, stage, model, lambda: self._run(prompt, schema, output_path, model))
+
+    def _run(self, prompt: str, schema: Path, output_path: Path, model: str | None):
+        task = _task_file(self.task_dir, prompt, schema)
+        command = [resolve_executable(self.cli), "-p", _pointer(task), "--force", "--output-format", "json"]
+        if model:
+            command += ["--model", model]
+        completed = _call(command, "", self.cwd, self.timeout_seconds, "Cursor CLI")
+        result = parse_json_output(completed.stdout)
+        if result.get("is_error") is True:
+            raise RuntimeError(f"Cursor CLI returned an error\nresult: {str(result.get('result'))[:2000]}")
+        data = json_object_in_text(result.get("result"))
+        if data is None:
+            raise RuntimeError(f"Cursor CLI did not return a JSON answer\nresult: {str(result.get('result'))[:2000]}")
+        _write(output_path, data)
+        return None, None
+
+
 # ── 공통 ────────────────────────────────────────────────────────────────────
 
 def _call(command: list[str], prompt: str, cwd: Path, timeout: int, name: str) -> subprocess.CompletedProcess:
@@ -221,7 +299,8 @@ def json_object_in_text(value: object) -> dict | None:
 
 
 def make_client(provider: str, cli: str, cwd: Path, add_dirs: tuple[str, ...], effort: str = "",
-                allowed: tuple[str, ...] = (), denied: tuple[str, ...] = (), timeout: int = 2400):
+                allowed: tuple[str, ...] = (), denied: tuple[str, ...] = (), timeout: int = 2400,
+                task_dir: Path | None = None):
     if provider == "claude":
         return ClaudeClient(cli=cli, cwd=cwd, timeout_seconds=timeout, allowed_tools=allowed, disallowed_tools=denied,
                             add_dirs=add_dirs, effort=effort)
@@ -229,6 +308,12 @@ def make_client(provider: str, cli: str, cwd: Path, add_dirs: tuple[str, ...], e
         return CodexClient(cli=cli, cwd=cwd, timeout_seconds=timeout, add_dirs=add_dirs, effort=effort)
     if provider == "gemini":
         return GeminiClient(cli=cli, cwd=cwd, timeout_seconds=timeout, add_dirs=add_dirs)
+    if provider in ("copilot", "cursor"):
+        if task_dir is None:
+            raise ValueError(f"{provider} 는 지시문 파일 폴더(task_dir)가 필요하다")
+        if provider == "copilot":
+            return CopilotClient(cli=cli, cwd=cwd, task_dir=task_dir, timeout_seconds=timeout, add_dirs=add_dirs)
+        return CursorClient(cli=cli, cwd=cwd, task_dir=task_dir, timeout_seconds=timeout)
     raise ValueError(f"모르는 AI: {provider}")
 
 

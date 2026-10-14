@@ -23,7 +23,7 @@
 |---|---|---|
 | Windows 10/11 | — | 알림 · 켜기 파일 · 설치 버튼이 Windows 기준입니다. 서버 자체는 macOS · Linux 에서도 돕니다 |
 | 파이썬 3.10 이상 | 필수 | 추가 패키지 없음(표준 라이브러리만). `Setup.bat` 이 없으면 설치합니다 |
-| 쓸 AI 하나 | 필수 | 환경 점검 창에서 고릅니다 — **Claude**(Anthropic) · **ChatGPT Codex**(OpenAI) · **Gemini**(Google) |
+| 쓸 AI 하나 | 필수 | 환경 점검 창에서 고릅니다 — **Claude**(Anthropic) · **ChatGPT Codex**(OpenAI) · **GitHub Copilot** · **Cursor** · **Gemini**(Google) |
 | 그 AI 의 프로그램(CLI) | 필수 | [설치하기] 버튼 — Claude · Codex 는 공식 설치 스크립트, Gemini 는 npm(Node.js 20+ 도 버튼으로 설치) |
 | 그 AI 의 계정 | 필수 | Claude: Pro · Max · Team · Enterprise / Codex: ChatGPT Plus · Pro · Business · Edu · Enterprise / Gemini: Google 계정(무료, 하루 1,000회). [로그인하기] 버튼 |
 | Git for Windows | 권장(Claude) | 없으면 Claude 가 PowerShell 로 명령을 돌려 '지울 파일 보관 폴더로 옮기기'가 막힐 수 있습니다. [설치하기]는 winget, 없으면 GitHub 공식 설치 파일(관리자 확인 창이 뜰 수 있음) |
@@ -122,7 +122,7 @@ You: check the result → [Done] / [Refine and retry]
 |---|---|---|
 | Windows 10/11 | — | Notifications, launcher and install buttons are Windows-first; the server itself runs on macOS/Linux |
 | Python 3.10+ | Required | No third-party packages. `Setup.bat` installs it if missing |
-| One AI of your choice | Required | Pick in the setup dialog — **Claude** (Anthropic), **ChatGPT Codex** (OpenAI) or **Gemini** (Google) |
+| One AI of your choice | Required | Pick in the setup dialog — **Claude** (Anthropic), **ChatGPT Codex** (OpenAI), **GitHub Copilot**, **Cursor** or **Gemini** (Google) |
 | That AI's CLI | Required | [Install] button — official install scripts for Claude/Codex; npm for Gemini (Node.js 20+ is also installed by a button) |
 | That AI's account | Required | Claude: Pro/Max/Team/Enterprise · Codex: ChatGPT Plus/Pro/Business/Edu/Enterprise · Gemini: Google account (free, 1,000 requests/day). [Log in] button |
 | Git for Windows | Recommended | Without it Claude runs commands through PowerShell and "move files to the removed folder" may be blocked |

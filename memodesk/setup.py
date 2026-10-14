@@ -7,7 +7,7 @@ AI 마다 다른 것(설치 명령 · 계정 · 로그인 확인 방법)은 prov
 |---|---|---|---|
 | 기본 실행 환경(Python) | 꼭 | 지금 도는 서버 | — (없으면 서버가 안 켜진다 — `Setup.bat` 이 먼저 깐다) |
 | 쓸 AI 고르기 | 꼭 | config.json 의 `ai` | AI 카드 |
-| Node.js | 꼭(Gemini 만) | `node` | winget · 없으면 nodejs.org 공식 설치 파일 |
+| Node.js | 꼭(Gemini · winget 없는 PC 의 Copilot) | `node` | winget · 없으면 nodejs.org 공식 설치 파일 |
 | AI 프로그램 | 꼭 | `<cli> --version` | 공식 설치 명령 창 |
 | AI 계정 로그인 | 꼭 | Claude `auth status` · Codex `login status` · Gemini 는 확인 명령이 없어 한 번 불러 본다 | 로그인 창 |
 | 보조 도구(Git) | 있으면 좋음(Claude 만) | `git` | winget · 없으면 GitHub 공식 설치 파일 |
@@ -76,6 +76,12 @@ def find_git() -> str | None:
     return None
 
 
+def needs_node(ai: str) -> bool:
+    """Node.js 단계가 필요한가 — Gemini 는 늘(npm 으로만 깐다), Copilot 은 winget 이 없을 때(npm 으로 깐다)."""
+    flag = providers.get(ai).get("needs_node")
+    return flag is True or (flag == "no_winget" and not shutil.which("winget"))
+
+
 def chosen() -> str:
     ai = config.load().get("ai") or ""
     return ai if ai in providers.PROVIDERS else ""
@@ -108,6 +114,13 @@ def _login_status(pid: str, cli: str) -> dict:
         line = next((l.strip() for l in text.splitlines() if l.strip()), "")
         ok = code == 0 and "logged in" in text.lower() and "not logged in" not in text.lower()
         return {"ok": ok, "detail": line or ("로그인됨" if ok else "로그인되어 있지 않습니다")}
+    if kind == "cursor_status":
+        code, text = _run([cli, "status"], timeout=30)
+        low = text.lower()
+        if code == 0 and ("logged in" in low or "authenticated" in low) and "not logged in" not in low and "not authenticated" not in low:
+            line = next((l.strip() for l in text.splitlines() if l.strip()), "로그인됨")
+            return {"ok": True, "detail": line[:120]}
+        return {"ok": False, "detail": "로그인되어 있지 않습니다" if code == 0 or "not" in low else f"로그인 상태를 읽지 못했습니다: {text.strip()[:120]}"}
     # real_call — 확인 명령이 없다. 마지막으로 실제 호출이 된 시각을 기억해 둔다
     verified = (config.load().get("verified") or {}).get(pid)
     if verified:
@@ -130,19 +143,20 @@ def check(force: bool = False) -> dict:
                   "detail": f"{info['name']} ({info['company']})" if info else "아직 고르지 않았습니다",
                   "action": "choose", "help": "메모를 처리할 AI 를 고릅니다. 나중에 바꿀 수 있습니다."})
     if info:
-        if info["needs_node"]:
+        node_min = info.get("node_min", 20)
+        if needs_node(ai):
             node = providers.find_node()
             node_ok = False
             if node:
                 code, text = _run([node, "--version"], timeout=20)
                 try:
-                    node_ok = code == 0 and int(text.strip().lstrip("v").split(".")[0]) >= 20
+                    node_ok = code == 0 and int(text.strip().lstrip("v").split(".")[0]) >= node_min
                 except ValueError:
                     node_ok = False
-                node_detail = f"설치됨 · {text.strip()}" + ("" if node_ok else " — 20 이상이 필요합니다")
+                node_detail = f"설치됨 · {text.strip()}" + ("" if node_ok else f" — {node_min} 이상이 필요합니다")
             else:
                 node_detail = "아직 설치되지 않았습니다"
-            items.append({"id": "node", "name": "Node.js (Gemini 에 필요)", "required": True, "ok": node_ok, "detail": node_detail,
+            items.append({"id": "node", "name": f"Node.js ({info['name']} 설치에 필요)", "required": True, "ok": node_ok, "detail": node_detail,
                           "action": "" if node_ok else "install_node",
                           "help": f"{info['cli_name']} 를 설치하는 데 필요한 프로그램입니다. 설치 중 관리자 확인 창이 뜨면 '예'를 누르세요."})
         cli = providers.find_cli(ai)
@@ -152,7 +166,7 @@ def check(force: bool = False) -> dict:
             cli_state = {"ok": code == 0, "detail": f"설치됨 · {first}" if code == 0 else f"설치는 되어 있지만 실행이 안 됩니다: {text.strip()[:120]}"}
         else:
             cli_state = {"ok": False, "detail": "아직 설치되지 않았습니다"}
-        blocked = info["needs_node"] and not items[-1]["ok"]
+        blocked = needs_node(ai) and not items[-1]["ok"]
         items.append({"id": "cli", "name": f"AI 프로그램 ({info['cli_name']})", "required": True, **cli_state,
                       "action": "" if cli_state["ok"] or blocked else "install_cli",
                       "help": "Node.js 를 먼저 설치하세요." if blocked else
@@ -259,7 +273,13 @@ def run_action(action: str, value: str = "") -> dict:
     if action == "install_cli":
         if not IS_WINDOWS:
             return {"manual": info["install_sh"]}
-        script = (NPM_FIND + "& $npm install -g @google/gemini-cli") if ai == "gemini" else info["install_ps"]
+        if ai == "gemini":
+            script = NPM_FIND + "& $npm install -g @google/gemini-cli"
+        elif ai == "copilot":
+            script = ("winget install -e --id GitHub.Copilot --accept-source-agreements --accept-package-agreements"
+                      if shutil.which("winget") else NPM_FIND + "& $npm install -g @github/copilot")
+        else:
+            script = info["install_ps"]
         _console(f"{info['cli_name']} 설치", f"AI 프로그램({info['cli_name']})을 설치합니다. 1~3분 걸립니다. 끝날 때까지 이 창을 닫지 마세요.", script)
         return {"opened": True}
     if action == "login":
@@ -287,6 +307,10 @@ def _ping(ai: str, cli: str) -> tuple[bool, str]:
         cmd = [cli, "-p", "ok 라고만 답해", "--model", "haiku", "--output-format", "json"]
     elif ai == "codex":
         cmd = [cli, "exec", "--skip-git-repo-check", "--ephemeral", "--sandbox", "read-only", "ok 라고만 답해"]
+    elif ai == "copilot":
+        cmd = [cli, "-p", "ok", "-s"]
+    elif ai == "cursor":
+        cmd = [cli, "-p", "ok", "--output-format", "json"]
     else:
         cmd = [cli, "-p", "ok 라고만 답해", "--output-format", "json"]
     code, text = _run(cmd, timeout=180)

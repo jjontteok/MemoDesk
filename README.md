@@ -23,17 +23,18 @@
 |---|---|---|
 | Windows 10/11 | — | 알림 · 켜기 파일 · 설치 버튼이 Windows 기준입니다. 서버 자체는 macOS · Linux 에서도 돕니다 |
 | 파이썬 3.10 이상 | 필수 | 추가 패키지 없음(표준 라이브러리만). `Setup.bat` 이 없으면 설치합니다 |
-| [Claude Code](https://code.claude.com/docs/en/setup) CLI | 필수 | 화면의 [설치하기] 버튼(공식 설치 명령) |
+| [Claude Code](https://code.claude.com/docs/en/setup) CLI | 필수 | 환경 점검 창의 [설치하기] 버튼(공식 설치 명령) |
 | 클로드 계정 | 필수 | **Pro · Max · Team · Enterprise · Console** 계정(무료 플랜은 안 됩니다). 화면의 [로그인하기] 버튼 |
-| Git for Windows | 권장 | 없으면 AI 가 PowerShell 로 명령을 돌려 '지울 파일 보관 폴더로 옮기기'가 막힐 수 있습니다 |
+| Git for Windows | 권장 | 없으면 AI 가 PowerShell 로 명령을 돌려 '지울 파일 보관 폴더로 옮기기'가 막힐 수 있습니다. [설치하기]는 winget, 없으면 GitHub 공식 설치 파일(관리자 확인 창이 뜰 수 있음) |
 
 ## 처음 설치
 
 1. 이 레포를 받습니다(`git clone https://github.com/jjontteok/MemoDesk.git` 또는 GitHub 의 **Code → Download ZIP** 후 압축 풀기).
-2. **`Setup.bat`** 을 더블클릭합니다. 파이썬이 없으면 winget 으로 설치한 뒤 MemoDesk 를 켭니다.
-3. 브라우저에 열린 화면 맨 위 **시작하기 전에** 점검표를 따라 버튼을 누릅니다 —
-   Claude Code [설치하기] → 계정 [로그인하기] → (권장) Git [설치하기]. 설치 · 로그인은 새 창에서 진행되고, 끝나면 [다시 확인].
-4. 모두 ✔ 이면 [실제로 불러 보기]로 한 번 확인합니다(Haiku 로 한 번, 비용 약 $0.01).
+2. **`Setup.bat`** 을 더블클릭합니다. 파이썬이 없으면 설치한 뒤(winget, 없으면 python.org 공식 설치 파일) MemoDesk 를 켭니다.
+3. 브라우저에 **환경 점검** 창이 뜹니다. 꼭 필요한 항목이 다 될 때까지 닫히지 않습니다. 강조된 **파란 버튼**을 차례로 누르세요 —
+   AI 프로그램 [설치하기] → AI 계정 [로그인하기] → (있으면 좋음) Git [설치하기]. 설치 · 로그인은 새 창에서 진행되고, 끝나면 창이 저절로 ✔ 로 바뀝니다.
+4. 모두 ✔ 이면 [AI 한 번 불러 보기]로 확인하고(Haiku 한 번, 약 $0.01) [시작하기].
+5. 프로젝트를 추가할 때 경로는 **[폴더 고르기]** 로 고르면 됩니다.
 
 다음부터는 **`MemoDesk.bat`** 을 더블클릭합니다(이미 켜져 있으면 브라우저만 엽니다). 직접 켜려면:
 
@@ -126,10 +127,11 @@ You: check the result → [Done] / [Refine and retry]
 ## First-time setup
 
 1. Get this repo (`git clone https://github.com/jjontteok/MemoDesk.git`, or **Code → Download ZIP** on GitHub and unzip).
-2. Double-click **`Setup.bat`**. It installs Python with winget if needed, then starts MemoDesk.
-3. Follow the **시작하기 전에 (Before you start)** checklist at the top of the page —
-   install Claude Code → log in → (recommended) install Git. Installs and login run in a new window; press [다시 확인 / Re-check] when done.
-4. When everything is ✔, press [실제로 불러 보기 / Try a real call] once (one Haiku call, about $0.01).
+2. Double-click **`Setup.bat`**. It installs Python if needed (winget, or the official python.org installer when winget is missing), then starts MemoDesk.
+3. An **환경 점검 (Environment check)** dialog opens and cannot be closed until the required items are ready. Press the highlighted blue buttons in order —
+   install the AI program (Claude Code) → log in → (optional) install Git. Installs and login run in a new window; the dialog turns ✔ by itself when they finish.
+4. When everything is ✔, press [AI 한 번 불러 보기 / Try the AI once] (one Haiku call, about $0.01), then [시작하기 / Start].
+5. When adding a project, use **[폴더 고르기 / Pick folder]** instead of typing the path.
 
 Afterwards, double-click **`MemoDesk.bat`** (if it is already running, it just opens the browser), or run:
 

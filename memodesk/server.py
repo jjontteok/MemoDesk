@@ -166,6 +166,8 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/models":
                 set_models(str(body.get("claude", "")).strip(), str(body.get("claude_effort", "")).strip())
                 return self.send_json({"ok": True, "models": model_state()})
+            if path == "/api/pick-folder":
+                return self.send_json({"ok": True, "path": setup.pick_folder()})
             if path == "/api/setup/run":
                 return self.send_json({"ok": True, **setup.run_action(str(body.get("action", "")))})
             if path.startswith("/api/projects/"):

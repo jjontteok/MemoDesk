@@ -123,21 +123,35 @@
   .usage td.l, .usage th.l { text-align: left; }
   .usage tr.sum td { font-weight: 700; background: var(--chip); }
   .err { color: var(--bad); font-size: 12px; min-height: 1em; }
-  /* 시작하기 전에 — 점검표 */
-  .setup { background: var(--card); border: 2px solid var(--warn); border-radius: 12px; padding: 16px; }
-  .setup.ready { border-color: var(--ok); }
-  .setup h2 { margin: 0 0 4px; font-size: 17px; }
-  .setup ol { margin: 10px 0 0; padding-left: 0; list-style: none; display: grid; gap: 8px; }
-  .setup li { display: grid; grid-template-columns: 26px 1fr auto; gap: 8px; align-items: start; padding: 10px; border: 1px solid var(--line); border-radius: 8px; }
-  .setup li .mark { font-size: 18px; line-height: 1.2; text-align: center; }
-  .setup li.ok .mark { color: var(--ok); } .setup li.no .mark { color: var(--bad); } .setup li.opt .mark { color: var(--warn); }
-  .setup li .what b { font-size: 14px; } .setup li .what .tag { font-size: 11px; margin-left: 6px; padding: 0 6px; border-radius: 999px; background: var(--chip); color: var(--muted); }
-  .setup li .detail { font-size: 12px; color: var(--muted); word-break: break-all; }
-  .setup li .help { font-size: 12px; margin-top: 2px; }
-  .setup li .acts { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
-  .setup .bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
-  .setup .bar .sp { flex: 1; }
-  .setup .manual { font-family: Consolas, monospace; background: var(--chip); padding: 2px 6px; border-radius: 4px; }
+  /* 환경 점검 팝업 — 화면을 덮는다. 필수가 다 될 때까지 닫을 수 없다(2026-10-14 사용자 요청) */
+  .modal { position: fixed; inset: 0; z-index: 100; background: rgba(15, 18, 23, .55); display: flex;
+           align-items: flex-start; justify-content: center; padding: 6vh 16px; overflow-y: auto; }
+  .modal.hidden { display: none; }
+  .modal .dialog { background: var(--card); border-radius: 16px; width: min(720px, 100%); padding: 24px;
+                   box-shadow: 0 20px 60px rgba(0, 0, 0, .35); border-top: 6px solid var(--warn); }
+  .modal .dialog.ready { border-top-color: var(--ok); }
+  .modal h2 { margin: 0 0 6px; font-size: 20px; }
+  .modal .lead { margin: 0 0 14px; color: var(--muted); }
+  .modal ol { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+  .modal li { display: grid; grid-template-columns: 30px 1fr auto; gap: 10px; align-items: start; padding: 12px;
+              border: 1px solid var(--line); border-radius: 10px; }
+  .modal li.now { border: 2px solid var(--accent); background: var(--hl); }
+  .modal li .mark { font-size: 20px; line-height: 1.2; text-align: center; }
+  .modal li.ok .mark { color: var(--ok); } .modal li.no .mark { color: var(--bad); } .modal li.opt .mark { color: var(--warn); }
+  .modal li .what b { font-size: 15px; }
+  .modal li .tag { font-size: 11px; margin-left: 6px; padding: 0 7px; border-radius: 999px; background: var(--chip); color: var(--muted); }
+  .modal li .detail { font-size: 12px; color: var(--muted); word-break: break-all; margin-top: 2px; }
+  .modal li .help { font-size: 13px; margin-top: 4px; line-height: 1.55; }
+  .modal li .now-tag { font-size: 12px; color: var(--accent); font-weight: 700; }
+  .modal li .acts { display: grid; gap: 6px; justify-items: end; }
+  .modal li .acts button.big { padding: 8px 18px; font-size: 14px; }
+  .modal li .alt { font-size: 11px; color: var(--muted); background: none; border: 0; padding: 0; text-decoration: underline; cursor: pointer; }
+  .modal .msg { margin-top: 12px; min-height: 1.4em; font-size: 13px; }
+  .modal .msg.bad { color: var(--bad); } .modal .msg.ok { color: var(--ok); }
+  .modal .bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 14px; }
+  .modal .bar .sp { flex: 1; }
+  .modal .start { padding: 10px 26px; font-size: 15px; }
+  .modal .checking { color: var(--muted); padding: 24px 0; text-align: center; }
   .setup-btn { width: 100%; margin-top: 8px; }
   .welcome { background: var(--card); border: 1px dashed var(--line); border-radius: 12px; padding: 24px; }
   .welcome h2 { margin-top: 0; }
@@ -170,11 +184,11 @@
   <button class="to-top" type="button" onclick="window.scrollTo({ top: 0, behavior: 'smooth' })">↑ 맨 위로</button>
 </aside>
 <main>
-  <section class="setup hidden" id="setup" aria-label="시작하기 전에"></section>
   <section class="pform hidden" id="add-form" aria-label="프로젝트 추가">
     <h3>프로젝트 추가</h3>
     <label>이름 <input type="text" class="f-name" placeholder="예: 홈페이지 리뉴얼"></label>
-    <label>경로 — AI 가 고칠 폴더의 전체 경로 <input type="text" class="f-path" spellcheck="false" placeholder="예: C:\work\homepage"></label>
+    <label>AI 가 고칠 폴더 — [폴더 고르기]로 고르거나 전체 경로를 적으세요
+      <span class="row"><input type="text" class="f-path" spellcheck="false" placeholder="예: C:\work\homepage" style="flex:1"><button type="button" class="pick-folder">폴더 고르기</button></span></label>
     <label>묶음 (선택) — 왼쪽에서 묶어 보기 <input type="text" class="f-group" placeholder="예: 디자인팀"></label>
     <label>백업에서 뺄 폴더 (선택, 줄마다 또는 쉼표로) — .git · node_modules · dist · build 등은 늘 뺍니다 <textarea class="f-excludes" spellcheck="false" placeholder="예: assets/videos"></textarea></label>
     <label>AI 에게 줄 추가 지시 (선택) — 폴더의 CLAUDE.md · AGENTS.md 는 AI 가 알아서 읽습니다 <textarea class="f-instructions" placeholder="예: 화면 문구는 존댓말로 / tests 폴더는 고치지 않는다"></textarea></label>
@@ -182,6 +196,9 @@
   </section>
   <div id="list"><p class="empty">불러오는 중…</p></div>
 </main>
+</div>
+<div class="modal" id="setup-modal" role="dialog" aria-modal="true" aria-labelledby="setup-title">
+  <div class="dialog" id="setup"><p class="checking">MemoDesk 를 쓸 준비가 됐는지 확인하는 중…</p></div>
 </div>
 <script src="/static/common.js"></script>
 <script>
@@ -279,7 +296,7 @@ function makeCard(row) {
     <div class="warnline hidden"></div>
     <section class="pform hidden settings" aria-label="프로젝트 설정">
       <label>이름 <input type="text" class="f-name"></label>
-      <label>경로 <input type="text" class="f-path" spellcheck="false"></label>
+      <label>AI 가 고칠 폴더 <span class="row"><input type="text" class="f-path" spellcheck="false" style="flex:1"><button type="button" class="pick-folder">폴더 고르기</button></span></label>
       <label>묶음 <input type="text" class="f-group"></label>
       <label>백업에서 뺄 폴더 (줄마다 또는 쉼표로) — .git · node_modules · dist · build 등은 늘 뺍니다 <textarea class="f-excludes" spellcheck="false"></textarea></label>
       <label>AI 에게 줄 추가 지시 <textarea class="f-instructions"></textarea></label>
@@ -702,7 +719,7 @@ async function refresh() {
   for (const [id, el] of cards) if (!ids.has(id)) { el.remove(); cards.delete(id); }
   if (!data.projects.length) {
     list.innerHTML = `<div class="welcome"><h2>MemoDesk 에 오신 것을 환영합니다</h2>
-      <p>먼저 위의 <b>시작하기 전에</b> 점검표가 모두 ✔ 인지 확인하세요. 그다음 왼쪽 <b>[+ 프로젝트 추가]</b>로 AI 가 고칠 폴더를 등록하세요. 프로젝트마다 메모를 적으면 대기열에 들어가고, 클로드가 위에서부터 차례로 처리합니다.</p>
+      <p>왼쪽 <b>[+ 프로젝트 추가]</b>로 AI 가 고칠 폴더를 등록하세요. 프로젝트마다 메모를 적으면 대기열에 들어가고, 클로드가 위에서부터 차례로 처리합니다.</p>
       <p class="meta">작업 전에 폴더를 백업하고, 실패하거나 멈추면 그 작업이 바꾼 것만 되돌립니다. AI 는 파일을 지우지 못하고(보관 폴더로 옮깁니다) git 명령도 쓰지 못합니다.</p></div>`;
   } else {
     list.querySelector(".welcome")?.remove(); list.querySelector(".empty")?.remove();
@@ -719,54 +736,89 @@ async function refresh() {
 refresh();
 setInterval(refresh, 2000);
 
-// ── 시작하기 전에 — 클로드 CLI · 로그인 · Git 점검과 설치 · 로그인 버튼 ──
-// 준비가 안 됐으면 맨 위에 펼친다. 다 되면 접고, 왼쪽 [환경 점검]으로 다시 연다. 설치 · 로그인은 서버가 새 창으로 띄운다
+// ── 환경 점검 팝업 — 켤 때마다 확인한다. 필수가 다 될 때까지 닫을 수 없다(2026-10-14 사용자 요청) ──
+// 개발자가 아닌 사람도 쓴다 — 지금 할 일 하나를 강조하고, 설치 · 로그인 창이 끝나면 저절로 다시 확인해 ✔ 로 바꾼다.
+// 이 탭에서 한 번 [시작하기]를 눌렀으면 새로고침에는 다시 띄우지 않는다(준비가 깨지면 다시 띄운다)
+const setupModal = document.getElementById("setup-modal");
 const setupBox = document.getElementById("setup");
-let setupData = null, setupMsg = "", setupOpen = false;
+let setupData = null, setupMsg = "", setupMsgKind = "", setupBusy = false;
+const confirmedThisTab = () => { try { return sessionStorage.getItem("memodesk-setup-ok") === "1"; } catch { return false; } };
 async function loadSetup(force = false) {
   try { setupData = await (await fetch("/api/setup" + (force ? "?force=1" : ""))).json(); } catch { return; }
-  if (!setupData.ready) setupOpen = true;
+  if (!setupData.ready) { try { sessionStorage.removeItem("memodesk-setup-ok"); } catch {} setupModal.classList.remove("hidden"); }
+  else if (confirmedThisTab() && !setupModal.dataset.manual) setupModal.classList.add("hidden");
   renderSetup();
 }
 function renderSetup() {
   const d = setupData;
-  const btn = document.getElementById("open-setup");
-  btn.textContent = d && d.ready ? "환경 점검 ✔" : "환경 점검 — 준비 필요";
-  btn.className = "setup-btn" + (d && !d.ready ? " danger" : "");
-  setupBox.classList.toggle("hidden", !d || !setupOpen);
+  const side = document.getElementById("open-setup");
+  side.textContent = d && d.ready ? "환경 점검 ✔" : "환경 점검 — 준비 필요";
+  side.className = "setup-btn" + (d && !d.ready ? " danger" : "");
   if (!d) return;
   setupBox.classList.toggle("ready", d.ready);
+  const now = d.items.find(i => i.required && !i.ok);
   const ACTION = { install_claude: "설치하기", login_claude: "로그인하기", install_git: "설치하기" };
-  setupBox.innerHTML = `<h2>${d.ready ? "✔ 준비됐습니다" : "시작하기 전에 — 이것부터 준비하세요"}</h2>
-    <p class="meta">${d.ready ? "메모를 적으면 클로드가 처리합니다." : "아래 순서대로 버튼을 누르세요. 설치 · 로그인은 새 창에서 진행되고, 끝나면 그 창을 닫고 [다시 확인]을 누릅니다."}</p>
-    <ol>${d.items.map((it, i) => `<li class="${it.ok ? "ok" : it.required ? "no" : "opt"}">
+  setupBox.innerHTML = `<h2 id="setup-title">${d.ready ? "✔ 준비가 끝났습니다" : "MemoDesk 를 쓰기 전에 준비가 필요합니다"}</h2>
+    <p class="lead">${d.ready ? "이제 메모를 적으면 AI 가 처리합니다." + (d.items.some(i => !i.required && !i.ok) ? " 아래 권장 항목은 나중에 해도 됩니다." : "")
+      : "위에서부터 차례로 <b>파란 버튼</b>을 누르세요. 새 창이 열려 설치 · 로그인이 진행되고, 끝나면 여기가 저절로 ✔ 로 바뀝니다."}</p>
+    <ol>${d.items.map((it, i) => `<li class="${it.ok ? "ok" : it.required ? "no" : "opt"}${it === now ? " now" : ""}">
       <span class="mark">${it.ok ? "✔" : it.required ? "✘" : "!"}</span>
-      <div class="what"><b>${i + 1}. ${esc(it.name)}</b><span class="tag">${it.required ? "필수" : "권장"}</span>
+      <div class="what"><b>${i + 1}. ${esc(it.name)}</b><span class="tag">${it.required ? "꼭 필요" : "있으면 좋음"}</span>
+        ${it === now ? `<div class="now-tag">← 지금 할 일</div>` : ""}
         <div class="detail">${esc(it.detail)}</div>${!it.ok && it.help ? `<div class="help">${esc(it.help)}</div>` : ""}</div>
-      <div class="acts">${it.action ? `<button class="primary" data-setup="${esc(it.action)}">${ACTION[it.action] || "실행"}</button>` : ""}</div></li>`).join("")}</ol>
-    <div class="bar"><button data-setup="recheck">다시 확인</button>
-      ${d.items.find(i => i.id === "claude_login")?.ok ? `<button data-setup="try_call" title="Haiku 로 한 번 불러 실제로 쓸 수 있는지 봅니다(비용 약 $0.01)">실제로 불러 보기</button>` : ""}
-      <span class="meta">${esc(setupMsg)}</span><span class="sp"></span>${d.ready ? `<button data-setup="close">닫기</button>` : ""}</div>`;
+      <div class="acts">${it.action ? `<button class="${it === now || !it.required ? "primary big" : "big"}" data-setup="${esc(it.action)}"${setupBusy ? " disabled" : ""}>${ACTION[it.action] || "실행"}</button>` : ""}
+        ${it.action === "login_claude" ? `<button class="alt" data-setup="login_console" title="회사에서 받은 Anthropic Console(API) 계정을 쓰는 경우">회사 API 계정이면 여기</button>` : ""}</div></li>`).join("")}</ol>
+    <div class="msg ${setupMsgKind}">${esc(setupMsg)}</div>
+    <div class="bar"><button data-setup="recheck"${setupBusy ? " disabled" : ""}>다시 확인</button>
+      ${d.ready ? `<button data-setup="try_call" title="AI 를 한 번 불러 실제로 답하는지 봅니다(비용 약 10원)"${setupBusy ? " disabled" : ""}>AI 한 번 불러 보기</button>` : ""}
+      <span class="sp"></span>${d.ready ? `<button class="primary start" data-setup="start">시작하기</button>` : ""}</div>`;
 }
+function say(text, kind = "") { setupMsg = text; setupMsgKind = kind; renderSetup(); }
 setupBox.addEventListener("click", async e => {
   const b = e.target.closest("button[data-setup]");
-  if (!b) return;
+  if (!b || b.disabled) return;
   const act = b.dataset.setup;
-  if (act === "close") { setupOpen = false; renderSetup(); return; }
-  if (act === "recheck") { setupMsg = "확인하는 중…"; renderSetup(); await loadSetup(true); setupMsg = setupData.ready ? "준비 완료" : "아직 준비가 덜 됐습니다"; renderSetup(); return; }
-  b.disabled = true;
-  if (act === "try_call") { setupMsg = "불러 보는 중… (최대 몇십 초)"; renderSetup(); }
+  if (act === "start") {
+    try { sessionStorage.setItem("memodesk-setup-ok", "1"); } catch {}
+    delete setupModal.dataset.manual;
+    setupModal.classList.add("hidden");
+    return;
+  }
+  if (act === "recheck") { say("확인하는 중…"); await loadSetup(true); say(setupData.ready ? "준비가 끝났습니다" : "아직 준비가 덜 됐습니다 — 표시된 버튼을 누르세요", setupData.ready ? "ok" : ""); return; }
+  setupBusy = true;
+  say(act === "try_call" ? "AI 를 불러 보는 중… (몇 초 ~ 몇십 초)" : "창을 여는 중…");
   const { res, data } = await postJson("/api/setup/run", { action: act });
-  if (!res.ok) setupMsg = data.error || "실패했습니다";
-  else if (data.manual) setupMsg = `터미널에서 직접 실행하세요: ${data.manual}`;
-  else if (act === "try_call") setupMsg = data.ok ? `✔ ${data.detail}` : `✘ ${data.detail}`;
-  else setupMsg = "새 창이 열렸습니다 — 끝나면 그 창을 닫고 [다시 확인]을 누르세요";
-  renderSetup();
+  setupBusy = false;
+  if (!res.ok) say(data.error || "실패했습니다", "bad");
+  else if (data.manual) say(`터미널에서 직접 실행하세요: ${data.manual}`);
+  else if (act === "try_call") say(data.ok ? `✔ ${data.detail}` : `✘ AI 가 답하지 않았습니다 — ${data.detail}`, data.ok ? "ok" : "bad");
+  else say(act.startsWith("login") ? "로그인 창이 열렸습니다. 브라우저에서 로그인을 마치면 여기가 저절로 ✔ 로 바뀝니다."
+                                  : "설치 창이 열렸습니다. 설치가 끝나면 여기가 저절로 ✔ 로 바뀝니다(1~3분).");
 });
-document.getElementById("open-setup").onclick = () => { setupOpen = true; renderSetup(); loadSetup(true); window.scrollTo({ top: 0, behavior: "smooth" }); };
-loadSetup();
-// 준비가 안 된 동안에는 가끔 다시 본다(새 창에서 설치 · 로그인이 끝났을 수 있다) — 서버는 60초 동안 결과를 재사용한다
-setInterval(() => { if (setupData && !setupData.ready) loadSetup(); }, 15000);
+// 준비가 안 된 동안은 몇 초마다 다시 본다 — 새 창에서 설치 · 로그인이 끝나면 사람이 누르지 않아도 ✔ 가 된다
+setInterval(() => { if (setupData && !setupData.ready && !setupModal.classList.contains("hidden")) loadSetup(true); }, 5000);
+// 준비가 됐어도 권장 항목(Git)을 설치하는 중일 수 있다 — 팝업이 열려 있으면 가끔 다시 본다
+setInterval(() => { if (setupData && setupData.ready && !setupModal.classList.contains("hidden")) loadSetup(true); }, 15000);
+document.getElementById("open-setup").onclick = () => { setupModal.dataset.manual = "1"; setupModal.classList.remove("hidden"); say(""); loadSetup(true); };
+document.addEventListener("keydown", e => {   // 준비가 끝났을 때만 Esc 로 닫는다
+  if (e.key === "Escape" && setupData?.ready && !setupModal.classList.contains("hidden")) setupBox.querySelector("[data-setup=start]")?.click();
+});
+loadSetup(true);
+
+// ── [폴더 고르기] — 경로를 손으로 치지 않게. 서버가 이 PC 에 폴더 고르기 창을 띄운다 ──
+document.addEventListener("click", async e => {
+  const b = e.target.closest("button.pick-folder");
+  if (!b) return;
+  const input = b.closest("label").querySelector(".f-path");
+  b.disabled = true; const label = b.textContent; b.textContent = "창에서 고르세요…";
+  const { res, data } = await postJson("/api/pick-folder", {});
+  b.disabled = false; b.textContent = label;
+  if (!res.ok) { alert(data.error || "폴더를 고르지 못했습니다"); return; }
+  if (data.path) { input.value = data.path; input.dispatchEvent(new Event("input")); }
+  const form = b.closest(".pform");
+  const name = form?.querySelector(".f-name");
+  if (data.path && name && !name.value.trim()) name.value = data.path.split(/[\\/]/).filter(Boolean).pop();   // 이름이 비었으면 폴더 이름으로
+});
 </script>
 </body>
 </html>

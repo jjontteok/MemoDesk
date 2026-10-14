@@ -23,7 +23,7 @@
 |---|---|---|
 | Windows 10/11 | — | 알림 · 켜기 파일 · 설치 버튼이 Windows 기준입니다. 서버 자체는 macOS · Linux 에서도 돕니다 |
 | 파이썬 3.10 이상 | 필수 | 추가 패키지 없음(표준 라이브러리만). `Setup.bat` 이 없으면 설치합니다 |
-| 쓸 AI 하나 | 필수 | 환경 점검 창에서 고릅니다 — **Claude**(Anthropic) · **ChatGPT Codex**(OpenAI) · **GitHub Copilot** · **Cursor** · **Gemini**(Google) |
+| 쓸 AI (하나 이상) | 필수 | 환경 점검 창에서 추가합니다(여러 개 가능) — **Claude**(Anthropic) · **ChatGPT Codex**(OpenAI) · **GitHub Copilot** · **Cursor** · **Gemini**(Google) |
 | 그 AI 의 프로그램(CLI) | 필수 | [설치하기] 버튼 — Claude · Codex 는 공식 설치 스크립트, Gemini 는 npm(Node.js 20+ 도 버튼으로 설치) |
 | 그 AI 의 계정 | 필수 | Claude: Pro · Max · Team · Enterprise / Codex: ChatGPT Plus · Pro · Business · Edu · Enterprise / Gemini: Google 계정(무료, 하루 1,000회). [로그인하기] 버튼 |
 | Git for Windows | 권장(Claude) | 없으면 Claude 가 PowerShell 로 명령을 돌려 '지울 파일 보관 폴더로 옮기기'가 막힐 수 있습니다. [설치하기]는 winget, 없으면 GitHub 공식 설치 파일(관리자 확인 창이 뜰 수 있음) |
@@ -33,8 +33,8 @@
 1. 이 레포를 받습니다(`git clone https://github.com/jjontteok/MemoDesk.git` 또는 GitHub 의 **Code → Download ZIP** 후 압축 풀기).
 2. **`Setup.bat`** 을 더블클릭합니다. 파이썬이 없으면 설치한 뒤(winget, 없으면 python.org 공식 설치 파일) MemoDesk 를 켭니다.
 3. 브라우저에 **환경 점검** 창이 뜹니다. 꼭 필요한 항목이 다 될 때까지 닫히지 않습니다. 강조된 **파란 버튼**을 차례로 누르세요 —
-   **쓸 AI 고르기** → AI 프로그램 [설치하기] → AI 계정 [로그인하기] → (있으면 좋음) Git [설치하기]. 설치 · 로그인은 새 창에서 진행되고, 끝나면 창이 저절로 ✔ 로 바뀝니다.
-   AI 는 나중에 왼쪽 [환경 점검] → [다른 AI 로 바꾸기]로 바꿀 수 있습니다.
+   **쓸 AI 추가하기**(여러 개 가능) → AI 마다 프로그램 [설치하기] → 계정 [로그인하기] → (Claude 는 있으면 좋음) Git [설치하기]. 설치 · 로그인은 새 창에서 진행되고, 끝나면 창이 저절로 ✔ 로 바뀝니다.
+   하나만 준비돼도 쓸 수 있습니다. AI 는 나중에 왼쪽 [환경 점검] → [AI 추가 · 빼기]로 더하거나 뺍니다.
 4. 모두 ✔ 이면 [AI 한 번 불러 보기]로 확인하고(Haiku 한 번, 약 $0.01) [시작하기].
 5. 프로젝트를 추가할 때 경로는 **[폴더 고르기]** 로 고르면 됩니다.
 
@@ -53,7 +53,9 @@ python -B -m memodesk --port 8800 --no-notify
 
 1. 왼쪽 **[+ 프로젝트 추가]** — 이름, AI 가 고칠 폴더의 **전체 경로**, 묶음(선택)을 적습니다.
    - 백업에서 뺄 폴더 · AI 에게 줄 추가 지시도 적을 수 있습니다. 폴더의 `CLAUDE.md` · `AGENTS.md` 는 AI 가 알아서 읽습니다.
-2. 프로젝트 카드에 메모를 적고 **Enter**(줄바꿈은 Shift+Enter). 화면 캡처는 **Ctrl+V** 로 붙입니다.
+2. 프로젝트 카드에서 **보낼 AI** 를 고르고 메모를 적은 뒤 **Enter**(줄바꿈은 Shift+Enter). 화면 캡처는 **Ctrl+V** 로 붙입니다.
+   - 고른 AI 는 프로젝트마다 기억합니다. 대기 중인 메모도 [AI: …] 칸에서 다른 AI 로 바꿀 수 있습니다.
+   - 한 프로젝트에서는 AI 가 달라도 차례대로 하나씩 처리합니다(같은 폴더를 두 AI 가 동시에 고치지 않게).
    - 고쳐 달라는 부탁도, 의견 · 제안을 묻는 질문도 그냥 메모로 적습니다. 답은 서식대로 보이고 [크게 보기]로 읽습니다.
 3. 대기열은 위에서부터 처리됩니다. 대기 중인 메모는 끌어서 순서를 바꾸고, 글을 고칠 수 있습니다.
 4. 끝난 메모는 **확인 대기**(한 것) 또는 **열림**(못 한 것 — 이유가 붙음)이 됩니다. 결과를 확인하고 **[완료]**.
@@ -122,7 +124,7 @@ You: check the result → [Done] / [Refine and retry]
 |---|---|---|
 | Windows 10/11 | — | Notifications, launcher and install buttons are Windows-first; the server itself runs on macOS/Linux |
 | Python 3.10+ | Required | No third-party packages. `Setup.bat` installs it if missing |
-| One AI of your choice | Required | Pick in the setup dialog — **Claude** (Anthropic), **ChatGPT Codex** (OpenAI), **GitHub Copilot**, **Cursor** or **Gemini** (Google) |
+| One or more AIs | Required | Add in the setup dialog (several allowed) — **Claude** (Anthropic), **ChatGPT Codex** (OpenAI), **GitHub Copilot**, **Cursor** or **Gemini** (Google) |
 | That AI's CLI | Required | [Install] button — official install scripts for Claude/Codex; npm for Gemini (Node.js 20+ is also installed by a button) |
 | That AI's account | Required | Claude: Pro/Max/Team/Enterprise · Codex: ChatGPT Plus/Pro/Business/Edu/Enterprise · Gemini: Google account (free, 1,000 requests/day). [Log in] button |
 | Git for Windows | Recommended | Without it Claude runs commands through PowerShell and "move files to the removed folder" may be blocked |
@@ -132,7 +134,7 @@ You: check the result → [Done] / [Refine and retry]
 1. Get this repo (`git clone https://github.com/jjontteok/MemoDesk.git`, or **Code → Download ZIP** on GitHub and unzip).
 2. Double-click **`Setup.bat`**. It installs Python if needed (winget, or the official python.org installer when winget is missing), then starts MemoDesk.
 3. An **환경 점검 (Environment check)** dialog opens and cannot be closed until the required items are ready. Press the highlighted blue buttons in order —
-   choose an AI → install its program → log in → (optional, Claude) install Git. You can switch AI later from [환경 점검 / Environment check]. Installs and login run in a new window; the dialog turns ✔ by itself when they finish.
+   add one or more AIs → for each, install its program → log in → (optional, Claude) install Git. One ready AI is enough; add or remove AIs later from [환경 점검 / Environment check]. Installs and login run in a new window; the dialog turns ✔ by itself when they finish.
 4. When everything is ✔, press [AI 한 번 불러 보기 / Try the AI once] (one Haiku call, about $0.01), then [시작하기 / Start].
 5. When adding a project, use **[폴더 고르기 / Pick folder]** instead of typing the path.
 
@@ -147,7 +149,8 @@ Closing the server window stops it; an interrupted job is rolled back on the nex
 
 1. **[+ 프로젝트 추가]** (Add project) — a name, the **absolute path** of the folder the AI may edit, and an optional group.
    - Optional: folders to exclude from backups, and extra instructions. The AI reads the folder's `CLAUDE.md` / `AGENTS.md` by itself.
-2. Type a task on the project card and press **Enter** (Shift+Enter for a new line). Paste screenshots with **Ctrl+V**.
+2. On the project card pick **which AI to send to**, type the memo and press **Enter** (Shift+Enter for a new line). Paste screenshots with **Ctrl+V**.
+   - The choice is remembered per project; a queued memo can be moved to another AI. Within a project, memos run one at a time even across AIs.
    - Requests and questions are both just memos. Answers are rendered as formatted text; use [크게 보기 / Read] for a large view.
 3. The queue runs top-down. Drag queued memos to reorder, or edit their text before they start.
 4. Finished memos become **확인 대기 / Review** (done) or **열림 / Open** (not done, with a reason). Check and press **[완료 / Done]**.

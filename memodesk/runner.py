@@ -111,9 +111,10 @@ class Job:
         self.proc: subprocess.Popen | None = None
         self.stop_requested = False
         self.ended: datetime | None = None
+        self.ai = ""                  # 이 작업을 맡은 AI(작업 기록 · 화면에 이름으로)
 
     def public(self) -> dict:
-        return {"id": self.stamp, "kind": self.kind, "note_kind": self.note_kind, "note_ids": self.note_ids,
+        return {"id": self.stamp, "kind": self.kind, "note_kind": self.note_kind, "note_ids": self.note_ids, "ai": self.ai,
                 "state": self.state, "step": self.step, "summary": self.summary,
                 "started": self.started.isoformat(timespec="seconds"),
                 "ended": self.ended.isoformat(timespec="seconds") if self.ended else "",
@@ -365,9 +366,11 @@ def ai_job(pid: str, group: list[dict]) -> Job:
     kind = notes.kind_of(group[0])
     ids = [n["id"] for n in group]
     label, module, result_name = AI_KIND[kind]
-    ai = setup.chosen()
+    ai = group[0].get("ai") or (setup.added()[0] if setup.added() else "")   # 예전 메모(AI 없음)는 첫 번째로 추가한 AI
     if not ai:
-        raise ValueError("쓸 AI 를 아직 고르지 않았다 — 왼쪽 [환경 점검]에서 고른 뒤 [다시 맡기기]")
+        raise ValueError("이 메모를 보낼 AI 가 없다 — 왼쪽 [환경 점검]에서 AI 를 추가한 뒤 [다시 맡기기]")
+    if ai not in providers.PROVIDERS:
+        raise ValueError(f"모르는 AI: {ai}")
     cli = providers.find_cli(ai)
     if not cli:
         raise ValueError(f"AI 프로그램({providers.get(ai)['cli_name']})이 설치되어 있지 않다 — 왼쪽 [환경 점검]에서 설치한 뒤 [다시 맡기기]")
@@ -380,6 +383,7 @@ def ai_job(pid: str, group: list[dict]) -> Job:
         raise
     cmd = [sys.executable, "-B", "-m", module, "--project", pid, "--stamp", stamp, "--provider", ai, "--cli", cli, *model_args(ai)]
     job = Job(pid, [(label, cmd, config.APP_DIR)], stamp, ids, kind)
+    job.ai = ai
     write_log(job, f"{project_name(pid)} · {label} · 메모 {', '.join(ids)}")
     return job
 

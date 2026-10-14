@@ -45,6 +45,13 @@
   .pform .ftitle { font-size: 14px; font-weight: 700; color: var(--ink); }   /* 항목 이름은 아래 설명보다 크게 */
   .add { display: flex; gap: 8px; margin: 12px 0 8px; flex-wrap: wrap; }
   .add textarea { flex: 1; min-height: 64px; resize: vertical; }
+  /* 보낼 AI — 추가한 AI 마다 버튼. 준비 안 된 AI 는 흐리게(누를 수 없음) */
+  .aipick { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; flex-basis: 100%; }
+  .aipick .lbl { font-size: 12px; color: var(--muted); margin-right: 2px; }
+  .aipick button { border-radius: 999px; padding: 4px 12px; font-size: 13px; }
+  .aipick button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .aitag { font-size: 11px; font-weight: 600; padding: 0 7px; border-radius: 999px; background: var(--chip); color: var(--accent); white-space: nowrap; }
+  select.aisel { font: inherit; font-size: 12px; color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 2px 4px; }
   .submit { display: flex; flex-direction: column; gap: 6px; width: 170px; }
   .submit select { font: inherit; font-size: 12px; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 4px; }
   .submit .save { flex: 1; }
@@ -192,6 +199,9 @@
   .modal .aicard .plan { font-size: 12px; color: var(--muted); line-height: 1.5; }
   .modal .aicard .badge { font-size: 11px; color: var(--ok); }
   .modal .aicard button { justify-self: start; }
+  .modal .aigroup { margin-top: 14px; }
+  .modal .aigroup h3 { margin: 0 0 8px; font-size: 15px; } .modal .aigroup h3 .meta { font-weight: 400; margin-left: 4px; }
+  .modal .gitrow { margin-top: 10px; }
   .setup-btn { width: 100%; margin-top: 8px; }
   .welcome { background: var(--card); border: 1px dashed var(--line); border-radius: 12px; padding: 24px; }
   .welcome h2 { margin-top: 0; }
@@ -251,7 +261,17 @@
 <script>
 const STATUS = { queued: "대기", working: "처리 중", review: "확인 대기", open: "열림", done: "완료" };
 const JOB = { running: "도는 중", ok: "끝남", failed: "실패", stopped: "멈춤" };
-const aiName = () => (setupData && (setupData.providers || []).find(p => p.chosen)?.name) || "AI";   // 지금 고른 AI 이름
+let lastAis = [];   // 추가한 AI [{id, name, ready}] — 상태를 받을 때마다
+const AI_NAMES = { claude: "Claude", codex: "ChatGPT (Codex)", copilot: "GitHub Copilot", cursor: "Cursor", gemini: "Gemini" };
+const aiNameOf = id => lastAis.find(a => a.id === id)?.name || AI_NAMES[id] || id || "AI";
+function renderAiPick(el) {
+  const box = el.querySelector(".aipick");
+  const list = lastAis;
+  if (!list.some(a => a.id === el._ai && a.ready)) el._ai = (list.find(a => a.ready) || {}).id || "";   // 고른 것이 없거나 준비 안 됐으면 준비된 첫 AI
+  const html = list.length ? `<span class="lbl">보낼 AI</span>` + list.map(a => `<button type="button" data-ai="${esc(a.id)}" class="${a.id === el._ai ? "on" : ""}"${a.ready ? "" : " disabled title=\"아직 설치 · 로그인이 안 됐습니다 — [환경 점검]\""}>${esc(a.name)}${a.ready ? "" : " (준비 안 됨)"}</button>`).join("")
+    : `<span class="lbl">보낼 AI 가 없습니다 — 왼쪽 [환경 점검]에서 AI 를 추가하세요</span>`;
+  if (box.dataset.sig !== html) { box.dataset.sig = html; box.innerHTML = html; }
+}
 const cards = new Map();
 const filter = { group: "all", project: "all" };
 try { for (const k of Object.keys(filter)) filter[k] = localStorage.getItem(`memodesk-${k}`) || "all"; } catch {}
@@ -357,6 +377,7 @@ function makeCard(row) {
         <button class="danger f-remove" type="button" title="MemoDesk 에서 이 프로젝트를 지웁니다. 실제 폴더와 파일은 그대로 둡니다">프로젝트 삭제</button></div>
     </section>
     <div class="add">
+      <div class="aipick" role="radiogroup" aria-label="보낼 AI"></div>
       <textarea placeholder="AI 에게 맡길 메모 (예: 3쪽 제목을 더 짧게 / 발표 순서가 자연스러운지 봐 줘 / 로그인 버튼 글자를 '시작하기'로) · 화면 캡처는 Ctrl+V 로 붙여 넣거나 끌어다 놓으세요 · Enter 로 적기, Shift+Enter 줄바꿈"></textarea>
       <div class="paste-thumbs"></div>
       <div class="submit"><select class="before" aria-label="넣을 자리"><option value="">대기열 맨 뒤에</option></select><button class="primary save">적기</button></div>
@@ -367,6 +388,14 @@ function makeCard(row) {
     <div class="job"></div>
     <details class="usage"><summary></summary><div class="table-wrap"></div></details>`;
   const ref = () => ({ project: row.id });
+  try { el._ai = localStorage.getItem(`memodesk-ai-${row.id}`) || ""; } catch { el._ai = ""; }
+  el.querySelector(".aipick").addEventListener("click", e => {
+    const b = e.target.closest("button[data-ai]");
+    if (!b || b.disabled) return;
+    el._ai = b.dataset.ai;
+    try { localStorage.setItem(`memodesk-ai-${row.id}`, el._ai); } catch {}
+    renderAiPick(el);
+  });
   const ta = el.querySelector(".add textarea");
   const beforeSel = el.querySelector(".before");
   // 메모에 그림 붙이기 — Ctrl+V 나 끌어다 놓기. [적기] 때 같이 올리고, AI 는 그 그림을 열어 본다
@@ -379,9 +408,10 @@ function makeCard(row) {
   const save = async () => {
     if (saving) return;
     if (!ta.value.trim()) { if (el._pending.length) el.querySelector(".err").textContent = "그림과 함께 할 일을 글로 적어 주세요"; return; }
+    if (!el._ai) { el.querySelector(".err").textContent = "보낼 AI 를 고르세요 — 없으면 왼쪽 [환경 점검]에서 AI 를 추가합니다"; return; }
     saving = true;
     try {
-      if ((await post("/api/notes", { ...ref(), text: ta.value, before: beforeSel.value, images: el._pending }, el)).ok) {
+      if ((await post("/api/notes", { ...ref(), text: ta.value, before: beforeSel.value, images: el._pending, ai: el._ai }, el)).ok) {
         ta.value = ""; beforeSel.value = ""; el._pending = []; drawPending();
       }
     } finally { saving = false; }
@@ -491,6 +521,14 @@ function makeCard(row) {
     el._dragging = false; el._dragId = ""; clearMarks();
     queue.querySelectorAll(".dragging").forEach(x => x.classList.remove("dragging"));
   });
+  const onAiChange = e => {
+    const s = e.target.closest("select.aisel");
+    if (!s) return;
+    s.blur();
+    post("/api/notes/ai", { ...ref(), id: s.dataset.id, ai: s.value }, el);
+  };
+  queue.onchange = onAiChange;
+  el.querySelector(".notes").onchange = onAiChange;
   const sendRefine = async id => {
     const text = (el._refine?.draft || "").trim();
     if (!text) { el.querySelector(".err").textContent = "보완할 내용을 적어 주세요"; return; }
@@ -600,11 +638,20 @@ function pendingThumbs(list, act, when) {
     + (list.length ? `<span class="meta">그림 ${list.length}장 — ${when}</span>` : "");
 }
 function noteHead(n, pid) {
-  return `<span class="nid">${esc(n.id)}</span>
+  return `<span class="nid">${esc(n.id)}${n.ai ? `<span class="aitag">${esc(aiNameOf(n.ai))}</span>` : ""}</span>
       <div><div class="ntext">${esc(n.text)}</div>${attachThumbs(pid, n.id, n.images)}${refinements(n, pid)}${noteLog(n)}</div>`;
 }
 // 보완 칸 · 고치기 칸을 쓰는 중에는 2초 새로고침이 목록을 다시 그리지 않는다(칸이 닫히고 글이 날아간다)
-const pickingKind = el => document.activeElement && document.activeElement.matches("textarea.refine-text, textarea.edit-text") && el.contains(document.activeElement);
+const pickingKind = el => document.activeElement && document.activeElement.matches("select.aisel, textarea.refine-text, textarea.edit-text") && el.contains(document.activeElement);
+// 메모를 맡을 AI 바꾸기 — 대기 중이면 바로 그 AI 차례로, 처리된 메모는 다음 [다시 맡기기]부터
+function aiSelect(n) {
+  const list = lastAis.length ? lastAis : [];
+  if (list.length < 2 && list.some(a => a.id === n.ai)) return "";
+  return `<select class="aisel" data-id="${esc(n.id)}" title="이 메모를 맡길 AI">`
+    + list.map(a => `<option value="${esc(a.id)}"${a.id === n.ai ? " selected" : ""}${a.ready ? "" : " disabled"}>${a.id === n.ai ? "AI: " : "→ "}${esc(a.name)}${a.ready ? "" : " (준비 안 됨)"}</option>`).join("")
+    + (n.ai && !list.some(a => a.id === n.ai) ? `<option value="${esc(n.ai)}" selected disabled>AI: ${esc(aiNameOf(n.ai))} (빠짐)</option>` : "")
+    + `</select>`;
+}
 const editing = (el, n) => el._edit && el._edit.id === n.id && n.status === "queued";
 function editHead(el, n, pid) {
   return `<span class="nid">${esc(n.id)}</span>
@@ -622,7 +669,7 @@ function renderQueue(el, row) {
     const qi = queued.indexOf(n);
     const b = (act, label, extra = "", dis = false) => `<button data-act="${act}" data-id="${esc(n.id)}" ${extra} ${dis ? "disabled" : ""}>${label}</button>`;
     const acts = n.status === "working" ? `<span class="st st-working">처리 중</span>`
-      : `<span class="st st-queued">대기</span>` + b("edit", "고치기", 'title="처리 전에 메모 글을 고칩니다"')
+      : `<span class="st st-queued">대기</span>` + b("edit", "고치기", 'title="처리 전에 메모 글을 고칩니다"') + aiSelect(n)
         + b("move", "↑", `data-before="${qi > 0 ? esc(queued[qi - 1].id) : ""}" title="위로"`, qi <= 0)
         + b("move", "↓", `data-before="${qi + 2 < queued.length ? esc(queued[qi + 2].id) : ""}" title="아래로"`, qi >= queued.length - 1)
         + b("delete", "지우기");
@@ -647,7 +694,7 @@ function renderDone(el, row) {
   const scrolled = list.scrollTop;
   list.innerHTML = done.map(n => {
     const b = (act, label) => `<button data-act="${act}" data-id="${esc(n.id)}">${label}</button>`;
-    const again = [b("requeue", "다시 맡기기"), b("refine", "보완해서 다시 맡기기")];
+    const again = [b("requeue", "다시 맡기기"), b("refine", "보완해서 다시 맡기기"), aiSelect(n)];
     const close = [...(n.status === "review" || n.status === "open" ? [b("done", "완료")] : []), b("delete", "지우기")];
     const form = el._refine && el._refine.id === n.id ? `<div class="refine">
         <textarea class="refine-text" data-id="${esc(n.id)}" placeholder="지난 결과에서 고칠 점 · 덧붙일 것. 캡처는 Ctrl+V · 끌어 놓기. Enter 로 맡기기 · Shift+Enter 줄바꿈">${esc(el._refine.draft)}</textarea>
@@ -727,11 +774,12 @@ function update(el, row) {
   const qs = el.querySelector(".qstate");
   const jobs = row.jobs || [];
   if (jobs.length) { qs.className = "qstate running";
-    qs.textContent = "● 처리 중 — " + jobs.map(j => `${j.note_ids.join(", ")} (${aiName()}) · ${j.step}`).join("  ‖  ")
+    qs.textContent = "● 처리 중 — " + jobs.map(j => `${j.note_ids.join(", ")} (${esc(aiNameOf(j.ai))}) · ${j.step}`).join("  ‖  ")
       + (row.pause_after ? " · ⏸ 이번 작업이 끝나면 멈춥니다" : ""); }
   else if (row.paused) { qs.className = "qstate paused"; qs.textContent = `■ 멈춤 — 대기 ${queued}개. [다시 시작]을 누르면 이어서 처리합니다`; }
   else { qs.className = "qstate idle"; qs.textContent = queued ? `대기 ${queued}개 — 곧 시작합니다` : "쉬는 중 — 메모를 적으면 바로 처리합니다"; }
   el.querySelector(".edit-project").disabled = false;
+  renderAiPick(el);
   renderQueue(el, row);
   renderDone(el, row);
   renderUsage(el, row);
@@ -740,7 +788,7 @@ function update(el, row) {
   const shownJobs = jobs.length ? jobs : (row.job ? [row.job] : []);
   const shownIds = new Set(shownJobs.map(j => j.id));
   const hist = row.history.filter(h => !shownIds.has(h.id));
-  const label = j => `메모 ${(j.note_ids || []).join(", ")}`;
+  const label = j => `메모 ${(j.note_ids || []).join(", ")}${j.ai ? ` · ${aiNameOf(j.ai)}` : ""}`;
   jobBox.innerHTML = shownJobs.map(j => {
     const live = j.state === "running";
     return `<div class="job-line"><b>${esc(label(j))}</b><span class="js-${esc(j.state)}">${JOB[j.state]}${live && j.step ? ` — ${esc(j.step)}` : ""}</span>
@@ -754,6 +802,7 @@ async function refresh() {
   let data;
   try { data = await (await fetch("/api/state")).json(); } catch { return; }
   document.getElementById("datadir").textContent = `기록: ${data.data_dir}`;
+  lastAis = data.ais || [];
   const list = document.getElementById("list");
   const ids = new Set(data.projects.map(p => p.id));
   for (const [id, el] of cards) if (!ids.has(id)) { el.remove(); cards.delete(id); }
@@ -820,7 +869,7 @@ document.addEventListener("keydown", e => { if (e.key === "Escape" && !reader.cl
 // 이 탭에서 한 번 [시작하기]를 눌렀으면 새로고침에는 다시 띄우지 않는다(준비가 깨지면 다시 띄운다)
 const setupModal = document.getElementById("setup-modal");
 const setupBox = document.getElementById("setup");
-let setupData = null, setupMsg = "", setupMsgKind = "", setupBusy = false, setupChoosing = false, setupLoginOpened = false;
+let setupData = null, setupMsg = "", setupMsgKind = "", setupBusy = false, setupChoosing = false, setupLoginOpened = "";
 const confirmedThisTab = () => { try { return sessionStorage.getItem("memodesk-setup-ok") === "1"; } catch { return false; } };
 async function loadSetup(force = false) {
   try { setupData = await (await fetch("/api/setup" + (force ? "?force=1" : ""))).json(); } catch { return; }
@@ -835,38 +884,51 @@ function renderSetup() {
   side.className = "setup-btn" + (d && !d.ready ? " danger" : "");
   if (!d) return;
   setupBox.classList.toggle("ready", d.ready);
-  const now = d.items.find(i => i.required && !i.ok);
-  const ACTION = { install_cli: "설치하기", login: "로그인하기", install_git: "설치하기", install_node: "설치하기", choose: "고르기" };
-  // 쓸 AI 고르기 — 아직 안 골랐거나 [다른 AI 로 바꾸기]를 눌렀으면 카드를 펼친다
-  const cards = (d.providers || []).map(c => `<div class="aicard${c.chosen ? " on" : ""}">
+  const groups = d.groups || [];
+  // 지금 할 일 — 위에서부터 처음 걸린 것(필수만). AI 를 아직 안 추가했으면 카드
+  const flat = [...d.items.filter(i => i.required), ...groups.flatMap(g => g.steps)];
+  const now = d.items.find(i => i.id === "ai" && !groups.length) || flat.find(i => !i.ok && i.action) || null;
+  const ACTION = { install_cli: "설치하기", login: "로그인하기", install_git: "설치하기", install_node: "설치하기" };
+  const btn = it => it.action ? `<button class="${it === now || !it.required ? "primary big" : "big"}" data-setup="${esc(it.action)}" data-value="${esc(it.ai || "")}"${setupBusy ? " disabled" : ""}>${ACTION[it.action] || "실행"}</button>` : "";
+  const btn2 = it => it.action2 ? `<button class="${setupLoginOpened === it.ai ? "primary" : ""}" data-setup="${esc(it.action2)}" data-value="${esc(it.ai || "")}"${setupBusy ? " disabled" : ""} title="AI 를 한 번 불러 로그인이 됐는지 확인합니다">로그인 확인</button>` : "";
+  const row = (it, label) => `<li class="${it.ok ? "ok" : it.required ? "no" : "opt"}${it === now ? " now" : ""}">
+      <span class="mark">${it.ok ? "✔" : it.required ? "✘" : "!"}</span>
+      <div class="what"><b>${esc(label)}</b>${it.required === false ? `<span class="tag">있으면 좋음</span>` : ""}
+        ${it === now ? `<div class="now-tag">← 지금 할 일</div>` : ""}
+        <div class="detail">${esc(it.detail)}</div>${!it.ok && it.help ? `<div class="help">${esc(it.help)}</div>` : ""}</div>
+      <div class="acts">${btn(it)}${btn2(it)}</div></li>`;
+  // AI 카드 — [추가] / [빼기]. 아무것도 안 추가했거나 [AI 추가 · 빼기]를 눌렀으면 펼친다
+  const cards = (d.providers || []).map(c => `<div class="aicard${c.added ? " on" : ""}">
       <div><span class="nm">${esc(c.name)}</span><span class="co">${esc(c.company)}</span></div>
       <div class="pitch">${esc(c.pitch)}</div><div class="plan">${esc(c.plan)}</div>
       ${c.installed ? `<span class="badge">✔ 이 PC 에 설치되어 있음</span>` : ""}
-      <button class="${c.chosen ? "" : "primary"}" data-setup="choose" data-value="${esc(c.id)}"${c.chosen ? " disabled" : ""}>${c.chosen ? "지금 쓰는 AI" : "이 AI 쓰기"}</button></div>`).join("");
-  const showCards = !d.ai || setupChoosing;
+      ${c.added ? `<button data-setup="remove" data-value="${esc(c.id)}"${setupBusy ? " disabled" : ""}>빼기</button>`
+                : `<button class="primary" data-setup="add" data-value="${esc(c.id)}"${setupBusy ? " disabled" : ""}>추가</button>`}</div>`).join("");
+  const showCards = !groups.length || setupChoosing;
+  const python = d.items.find(i => i.id === "python"), ai = d.items.find(i => i.id === "ai"), git = d.items.find(i => i.id === "git");
   setupBox.innerHTML = `<h2 id="setup-title">${d.ready ? "✔ 준비가 끝났습니다" : "MemoDesk 를 쓰기 전에 준비가 필요합니다"}</h2>
-    <p class="lead">${d.ready ? "이제 메모를 적으면 AI 가 처리합니다." + (d.items.some(i => !i.required && !i.ok) ? " 아래 권장 항목은 나중에 해도 됩니다." : "")
-      : !d.ai ? "먼저 메모를 처리할 <b>AI 를 하나 고르세요</b>. 그다음 파란 버튼을 차례로 누르면 설치 · 로그인이 진행됩니다."
-      : "위에서부터 차례로 <b>파란 버튼</b>을 누르세요. 새 창이 열려 설치 · 로그인이 진행되고, 끝나면 여기가 저절로 ✔ 로 바뀝니다."}</p>
-    <ol>${d.items.map((it, i) => `<li class="${it.ok ? "ok" : it.required ? "no" : "opt"}${it === now ? " now" : ""}">
-      <span class="mark">${it.ok ? "✔" : it.required ? "✘" : "!"}</span>
-      <div class="what"><b>${i + 1}. ${esc(it.name)}</b><span class="tag">${it.required ? "꼭 필요" : "있으면 좋음"}</span>
-        ${it === now ? `<div class="now-tag">← 지금 할 일</div>` : ""}
-        <div class="detail">${esc(it.detail)}</div>${!it.ok && it.help ? `<div class="help">${esc(it.help)}</div>` : ""}</div>
-      <div class="acts">${it.id === "ai" ? (d.ai ? `<button data-setup="toggle_cards">${setupChoosing ? "접기" : "다른 AI 로 바꾸기"}</button>` : "")
-          : it.action ? `<button class="${it === now || !it.required ? "primary big" : "big"}" data-setup="${esc(it.action)}"${setupBusy ? " disabled" : ""}>${ACTION[it.action] || "실행"}</button>` : ""}
-        ${it.action2 ? `<button class="${it.action2 && setupLoginOpened ? "primary" : ""}" data-setup="${esc(it.action2)}"${setupBusy ? " disabled" : ""} title="AI 를 한 번 불러 로그인이 됐는지 확인합니다">로그인 확인</button>` : ""}</div>
-      ${it.id === "ai" && showCards ? `<div class="cards" style="grid-column: 1 / -1">${cards}</div>` : ""}</li>`).join("")}</ol>
+    <p class="lead">${d.ready ? "메모를 적을 때 준비된 AI 중 하나를 골라 보냅니다." + (groups.some(g => !g.ready) ? " 아직 준비 안 된 AI 는 아래에서 이어서 하면 됩니다." : "")
+      : !groups.length ? "먼저 메모를 처리할 <b>AI 를 추가하세요</b>. 여러 개 추가해 두고 메모마다 골라 보낼 수 있습니다."
+      : "위에서부터 차례로 <b>파란 버튼</b>을 누르세요. 새 창이 열려 설치 · 로그인이 진행되고, 끝나면 여기가 저절로 ✔ 로 바뀝니다. 하나만 준비돼도 쓸 수 있습니다."}</p>
+    <ol>${row(python, "1. 기본 실행 환경 (Python)")}
+      <li class="${ai.ok ? "ok" : "no"}${ai === now ? " now" : ""}"><span class="mark">${ai.ok ? "✔" : "✘"}</span>
+        <div class="what"><b>2. 쓸 AI 추가하기</b>${ai === now ? `<div class="now-tag">← 지금 할 일</div>` : ""}<div class="detail">${esc(ai.detail)}</div><div class="help">${esc(ai.help)}</div></div>
+        <div class="acts">${groups.length ? `<button data-setup="toggle_cards">${setupChoosing ? "접기" : "AI 추가 · 빼기"}</button>` : ""}</div>
+        ${showCards ? `<div class="cards" style="grid-column: 1 / -1">${cards}</div>` : ""}</li></ol>
+    ${groups.map(g => `<div class="aigroup"><h3>${g.ready ? "✔" : "○"} ${esc(g.name)} <span class="meta">${g.ready ? "준비됨" : "준비 중"}</span></h3>
+      <ol>${g.steps.map(s => row(s, s.name)).join("")}</ol></div>`).join("")}
+    ${git ? `<ol class="gitrow">${row(git, git.name)}</ol>` : ""}
     <div class="msg ${setupMsgKind}">${esc(setupMsg)}</div>
     <div class="bar"><button data-setup="recheck"${setupBusy ? " disabled" : ""}>다시 확인</button>
-      ${d.ready ? `<button data-setup="try_call" title="AI 를 한 번 불러 실제로 답하는지 봅니다(비용 약 10원)"${setupBusy ? " disabled" : ""}>AI 한 번 불러 보기</button>` : ""}
+      ${groups.filter(g => g.ready).map(g => `<button data-setup="try_call" data-value="${esc(g.ai)}" title="AI 를 한 번 불러 실제로 답하는지 봅니다"${setupBusy ? " disabled" : ""}>${esc(g.name)} 불러 보기</button>`).join("")}
       <span class="sp"></span>${d.ready ? `<button class="primary start" data-setup="start">시작하기</button>` : ""}</div>`;
 }
 function say(text, kind = "") { setupMsg = text; setupMsgKind = kind; renderSetup(); }
 setupBox.addEventListener("click", async e => {
   const b = e.target.closest("button[data-setup]");
   if (!b || b.disabled) return;
-  const act = b.dataset.setup;
+  const act = b.dataset.setup, value = b.dataset.value || "";
+  const nameOf = id => (setupData.providers || []).find(p => p.id === id)?.name || "AI";
   if (act === "start") {
     try { sessionStorage.setItem("memodesk-setup-ok", "1"); } catch {}
     delete setupModal.dataset.manual;
@@ -874,31 +936,36 @@ setupBox.addEventListener("click", async e => {
     return;
   }
   if (act === "toggle_cards") { setupChoosing = !setupChoosing; renderSetup(); return; }
-  if (act === "choose") {
-    setupBusy = true; say("고르는 중…");
-    const { res, data } = await postJson("/api/setup/run", { action: "choose", value: b.dataset.value });
-    setupBusy = false; setupChoosing = false; setupLoginOpened = false;
-    if (!res.ok) { say(data.error || "고르지 못했습니다", "bad"); return; }
-    await loadSetup(true); say("골랐습니다 — 아래 파란 버튼을 차례로 누르세요"); refresh(); return;
+  if (act === "add" || act === "remove") {
+    setupBusy = true; say(act === "add" ? "추가하는 중…" : "빼는 중…");
+    const { res, data } = await postJson("/api/setup/run", { action: act, value });
+    setupBusy = false;
+    if (!res.ok) { say(data.error || "실패했습니다", "bad"); return; }
+    await loadSetup(true);
+    say(act === "add" ? `${nameOf(value)} 를 추가했습니다 — 아래 파란 버튼을 차례로 누르세요` : `${nameOf(value)} 를 뺐습니다`);
+    refresh(); return;
   }
   if (act === "recheck") { say("확인하는 중…"); await loadSetup(true); say(setupData.ready ? "준비가 끝났습니다" : "아직 준비가 덜 됐습니다 — 표시된 버튼을 누르세요", setupData.ready ? "ok" : ""); return; }
   setupBusy = true;
-  say(act === "try_call" ? "AI 를 불러 보는 중… (몇 초 ~ 몇십 초)" : "창을 여는 중…");
-  const { res, data } = await postJson("/api/setup/run", { action: act });
+  say(act === "try_call" ? `${nameOf(value)} 를 불러 보는 중… (몇 초 ~ 몇십 초)` : "창을 여는 중…");
+  const { res, data } = await postJson("/api/setup/run", { action: act, value });
   setupBusy = false;
-  if (act === "login") setupLoginOpened = true;
+  if (act === "login") setupLoginOpened = value;
   if (!res.ok) say(data.error || "실패했습니다", "bad");
   else if (data.manual) say(`터미널에서 직접 실행하세요: ${data.manual}`);
   else if (act === "try_call" || act === "verify_login") {
-    say(data.ok ? `✔ ${data.detail}` : `✘ AI 가 답하지 않았습니다 — ${data.detail}`, data.ok ? "ok" : "bad");
+    say(data.ok ? `✔ ${nameOf(value)}: ${data.detail}` : `✘ ${nameOf(value)} 가 답하지 않았습니다 — ${data.detail}`, data.ok ? "ok" : "bad");
     if (act === "verify_login") loadSetup(true);
   }
-  else say(act === "login" ? (setupData.items.find(i => i.id === "login")?.action2 ? "로그인 창이 열렸습니다. 로그인을 마치면 [로그인 확인]을 누르세요."
-                                                                                     : "로그인 창이 열렸습니다. 브라우저에서 로그인을 마치면 여기가 저절로 ✔ 로 바뀝니다.")
-                           : "설치 창이 열렸습니다. 설치가 끝나면 여기가 저절로 ✔ 로 바뀝니다(1~3분).");
+  else if (act === "login") {
+    const step = (setupData.groups || []).flatMap(g => g.steps).find(s => s.id === `${value}:login`);
+    say(step?.action2 ? "로그인 창이 열렸습니다. 로그인을 마치면 [로그인 확인]을 누르세요."
+                      : "로그인 창이 열렸습니다. 브라우저에서 로그인을 마치면 여기가 저절로 ✔ 로 바뀝니다.");
+  }
+  else say("설치 창이 열렸습니다. 설치가 끝나면 여기가 저절로 ✔ 로 바뀝니다(1~3분).");
 });
 // 준비가 안 된 동안은 몇 초마다 다시 본다 — 새 창에서 설치 · 로그인이 끝나면 사람이 누르지 않아도 ✔ 가 된다
-setInterval(() => { if (setupData && !setupData.ready && !setupModal.classList.contains("hidden")) loadSetup(true); }, 5000);
+setInterval(() => { if (setupData && (!setupData.ready || (setupData.groups || []).some(g => !g.ready)) && !setupModal.classList.contains("hidden")) loadSetup(true); }, 5000);
 // 준비가 됐어도 권장 항목(Git)을 설치하는 중일 수 있다 — 팝업이 열려 있으면 가끔 다시 본다
 setInterval(() => { if (setupData && setupData.ready && !setupModal.classList.contains("hidden")) loadSetup(true); }, 15000);
 document.getElementById("open-setup").onclick = () => { setupModal.dataset.manual = "1"; setupModal.classList.remove("hidden"); say(""); loadSetup(true); };

@@ -49,19 +49,20 @@ def restart_needed() -> bool:
 # ── 상태 ─────────────────────────────────────────────────────────────────────
 
 def model_state() -> dict:
-    """고른 AI 의 모델 · 추론 강도. 목록은 그 AI 프로그램이 받아 둔 것(없으면 이름을 직접 적는다)."""
-    ai = setup.chosen()
-    picked = (config.load().get("models") or {}).get(ai) or {}
-    info = providers.PROVIDERS.get(ai) or {}
-    return {"ai": ai, "name": info.get("name", ""), "model": picked.get("model", ""), "effort": picked.get("effort", ""),
-            "models": ai_clients.model_list(ai) if ai else [], "has_effort": ai in ("claude", "codex"),
-            "hint": info.get("model_hint", ""), "effort_label": EFFORT_LABEL}
+    """추가한 AI 마다 모델 · 추론 강도. 목록은 그 AI 프로그램이 받아 둔 것(없으면 이름을 직접 적는다)."""
+    models = config.load().get("models") or {}
+    out = []
+    for ai in setup.added():
+        info = providers.get(ai)
+        picked = models.get(ai) or {}
+        out.append({"ai": ai, "name": info["name"], "model": picked.get("model", ""), "effort": picked.get("effort", ""),
+                    "models": ai_clients.model_list(ai), "has_effort": ai in ("claude", "codex"), "hint": info.get("model_hint", "")})
+    return {"ais": out, "effort_label": EFFORT_LABEL}
 
 
-def set_models(model: str, effort: str) -> None:
-    ai = setup.chosen()
-    if not ai:
-        raise ValueError("먼저 쓸 AI 를 고르세요")
+def set_models(ai: str, model: str, effort: str) -> None:
+    if ai not in setup.added():
+        raise ValueError("추가한 AI 가 아니다")
     if model and not MODEL_RE.match(model):
         raise ValueError(f"모델 이름에 쓸 수 없는 글자가 있다: {model}")
     if effort and effort not in EFFORTS:
@@ -94,7 +95,8 @@ def project_row(project: dict, others: list[dict]) -> dict:
 def state() -> dict:
     all_projects = projects.all_projects()
     return {"projects": [project_row(p, all_projects) for p in all_projects], "models": model_state(),
-            "restart_needed": restart_needed(), "data_dir": str(config.DATA_DIR)}
+            "restart_needed": restart_needed(), "data_dir": str(config.DATA_DIR),
+            "ais": setup.check()["ais"]}   # 메모 칸의 AI 버튼(준비된 것만 누를 수 있다) — 점검 결과를 다시 쓴다
 
 
 def decode_images(body: dict) -> list[tuple[str, bytes]]:
@@ -174,7 +176,7 @@ class Handler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(length) or b"{}")
             path = urlparse(self.path).path
             if path == "/api/models":
-                set_models(str(body.get("model", "")).strip(), str(body.get("effort", "")).strip())
+                set_models(str(body.get("ai", "")), str(body.get("model", "")).strip(), str(body.get("effort", "")).strip())
                 return self.send_json({"ok": True, "models": model_state()})
             if path == "/api/pick-folder":
                 return self.send_json({"ok": True, "path": setup.pick_folder()})
@@ -243,7 +245,10 @@ class Handler(BaseHTTPRequestHandler):
         before = str(body.get("before") or "") or None
         with runner.LOCK:
             if path == "/api/notes":
-                note = notes.add(folder, str(body.get("text", "")), "code", before)   # 종류 없이 — 그냥 메모
+                ai = str(body.get("ai", ""))
+                if ai not in setup.added():
+                    raise ValueError("보낼 AI 를 고르세요 — 없으면 왼쪽 [환경 점검]에서 AI 를 추가합니다")
+                note = notes.add(folder, str(body.get("text", "")), "code", before, ai=ai)   # 종류 없이 — 그냥 메모
                 images = decode_images(body)
                 if images:
                     # LOCK 안에서 붙인 뒤에 kick 해야 AI 가 그림 없는 메모를 집지 않는다
@@ -258,6 +263,12 @@ class Handler(BaseHTTPRequestHandler):
                 runner.kick(pid)
             elif path == "/api/notes/kind":
                 notes.set_kind(folder, note_id, str(body.get("kind", "")))
+                runner.kick(pid)
+            elif path == "/api/notes/ai":
+                ai = str(body.get("ai", ""))
+                if ai not in setup.added():
+                    raise ValueError("추가한 AI 가 아니다")
+                notes.set_ai(folder, note_id, ai)
                 runner.kick(pid)
             elif path == "/api/notes/text":
                 notes.edit_text(folder, note_id, str(body.get("text", "")))

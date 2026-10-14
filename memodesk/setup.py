@@ -82,16 +82,34 @@ def needs_node(ai: str) -> bool:
     return flag is True or (flag == "no_winget" and not shutil.which("winget"))
 
 
-def chosen() -> str:
-    ai = config.load().get("ai") or ""
-    return ai if ai in providers.PROVIDERS else ""
+def added() -> list[str]:
+    """추가한 AI 들(순서대로). 2026-10-14 사용자 요청 — "ai 는 여러 개 선택할 수 있어서, 메모를 적을 때 고른 AI 에게 보낸다".
+    예전 설정(하나만 고르던 `ai`)은 그 하나를 추가한 것으로 읽는다."""
+    data = config.load()
+    found = data.get("ais")
+    if not isinstance(found, list):
+        found = [data["ai"]] if data.get("ai") else []
+    return [pid for pid in dict.fromkeys(found) if pid in providers.PROVIDERS]
 
 
-def choose(pid: str) -> None:
-    providers.get(pid)
-    config.update(ai=pid)
+def set_added(pids: list[str]) -> None:
+    config.update(ais=[pid for pid in dict.fromkeys(pids) if pid in providers.PROVIDERS], ai="")
     with _lock:
         _cache["data"] = None
+
+
+def add(pid: str) -> None:
+    providers.get(pid)
+    set_added([*added(), pid])
+
+
+def remove(pid: str) -> None:
+    set_added([x for x in added() if x != pid])
+
+
+def ready_ais() -> list[str]:
+    """설치 · 로그인까지 끝난 AI — 메모를 보낼 수 있는 것(점검 결과를 다시 쓴다)."""
+    return [a["id"] for a in check()["ais"] if a["ready"]]
 
 
 # ── 로그인 확인 — AI 마다 다르다 ──────────────────────────────────────────────
@@ -128,66 +146,81 @@ def _login_status(pid: str, cli: str) -> dict:
     return {"ok": False, "detail": "로그인한 뒤 [로그인 확인]을 누르세요(한 번 실제로 불러 봅니다)"}
 
 
+def _ai_steps(ai: str) -> list[dict]:
+    """AI 하나의 단계 — (Node.js) → 프로그램 → 로그인. id 는 `<AI>:<단계>`."""
+    info = providers.get(ai)
+    steps = []
+    if needs_node(ai):
+        node_min = info.get("node_min", 20)
+        node = providers.find_node()
+        node_ok = False
+        if node:
+            code, text = _run([node, "--version"], timeout=20)
+            try:
+                node_ok = code == 0 and int(text.strip().lstrip("v").split(".")[0]) >= node_min
+            except ValueError:
+                node_ok = False
+            node_detail = f"설치됨 · {text.strip()}" + ("" if node_ok else f" — {node_min} 이상이 필요합니다")
+        else:
+            node_detail = "아직 설치되지 않았습니다"
+        steps.append({"id": f"{ai}:node", "ai": ai, "name": f"Node.js ({info['name']} 설치에 필요)", "required": True, "ok": node_ok,
+                      "detail": node_detail, "action": "" if node_ok else "install_node",
+                      "help": f"{info['cli_name']} 를 설치하는 데 필요한 프로그램입니다. 설치 중 관리자 확인 창이 뜨면 '예'를 누르세요."})
+    cli = providers.find_cli(ai)
+    if cli:
+        code, text = _run([cli, "--version"], timeout=30)
+        first = text.strip().splitlines()[0] if text.strip() else ""
+        cli_state = {"ok": code == 0, "detail": f"설치됨 · {first}" if code == 0 else f"설치는 되어 있지만 실행이 안 됩니다: {text.strip()[:120]}"}
+    else:
+        cli_state = {"ok": False, "detail": "아직 설치되지 않았습니다"}
+    blocked = bool(steps) and not steps[-1]["ok"]
+    steps.append({"id": f"{ai}:cli", "ai": ai, "name": f"AI 프로그램 ({info['cli_name']})", "required": True, **cli_state,
+                  "action": "" if cli_state["ok"] or blocked else "install_cli",
+                  "help": "Node.js 를 먼저 설치하세요." if blocked else
+                          "메모를 읽고 일하는 AI 프로그램입니다. [설치하기]를 누르면 새 창에서 설치됩니다(1~3분)."})
+    login = _login_status(ai, cli) if cli_state["ok"] else {"ok": False, "detail": "AI 프로그램을 먼저 설치하세요"}
+    real_call = info["status"] == "real_call"
+    steps.append({"id": f"{ai}:login", "ai": ai, "name": f"AI 계정 로그인 ({info['name']})", "required": True, **login,
+                  "action": "" if login["ok"] or not cli_state["ok"] else "login",
+                  "action2": "verify_login" if real_call and cli_state["ok"] and not login["ok"] else "",
+                  "help": info["plan"] + " [로그인하기]를 누르면 새 창이 열립니다 — " + info["login_hint"]})
+    return steps
+
+
 def check(force: bool = False) -> dict:
-    """점검 결과. 몇 초 걸리므로 CACHE_SECONDS 동안 다시 쓴다. 이름 · 설명은 개발자가 아닌 사람도 읽게 쉬운 말로."""
+    """점검 결과. 몇 초 걸리므로 CACHE_SECONDS 동안 다시 쓴다. 이름 · 설명은 개발자가 아닌 사람도 읽게 쉬운 말로.
+
+    추가한 AI 마다 단계를 보인다. **하나라도** 준비되면 쓸 수 있다(ready) — 준비 안 된 AI 는 메모 칸에서 흐리게 보인다.
+    """
     with _lock:
         if not force and _cache["data"] and time.monotonic() - _cache["at"] < CACHE_SECONDS:
             return _cache["data"]
-    ai = chosen()
-    items = []
+    ais = added()
     version = ".".join(map(str, sys.version_info[:3]))
-    items.append({"id": "python", "name": "기본 실행 환경 (Python)", "required": True, "ok": sys.version_info >= (3, 10),
-                  "detail": f"Python {version}", "action": "", "help": ""})
-    info = providers.PROVIDERS.get(ai)
-    items.append({"id": "ai", "name": "쓸 AI 고르기", "required": True, "ok": bool(info),
-                  "detail": f"{info['name']} ({info['company']})" if info else "아직 고르지 않았습니다",
-                  "action": "choose", "help": "메모를 처리할 AI 를 고릅니다. 나중에 바꿀 수 있습니다."})
-    if info:
-        node_min = info.get("node_min", 20)
-        if needs_node(ai):
-            node = providers.find_node()
-            node_ok = False
-            if node:
-                code, text = _run([node, "--version"], timeout=20)
-                try:
-                    node_ok = code == 0 and int(text.strip().lstrip("v").split(".")[0]) >= node_min
-                except ValueError:
-                    node_ok = False
-                node_detail = f"설치됨 · {text.strip()}" + ("" if node_ok else f" — {node_min} 이상이 필요합니다")
-            else:
-                node_detail = "아직 설치되지 않았습니다"
-            items.append({"id": "node", "name": f"Node.js ({info['name']} 설치에 필요)", "required": True, "ok": node_ok, "detail": node_detail,
-                          "action": "" if node_ok else "install_node",
-                          "help": f"{info['cli_name']} 를 설치하는 데 필요한 프로그램입니다. 설치 중 관리자 확인 창이 뜨면 '예'를 누르세요."})
-        cli = providers.find_cli(ai)
-        if cli:
-            code, text = _run([cli, "--version"], timeout=30)
-            first = text.strip().splitlines()[0] if text.strip() else ""
-            cli_state = {"ok": code == 0, "detail": f"설치됨 · {first}" if code == 0 else f"설치는 되어 있지만 실행이 안 됩니다: {text.strip()[:120]}"}
-        else:
-            cli_state = {"ok": False, "detail": "아직 설치되지 않았습니다"}
-        blocked = needs_node(ai) and not items[-1]["ok"]
-        items.append({"id": "cli", "name": f"AI 프로그램 ({info['cli_name']})", "required": True, **cli_state,
-                      "action": "" if cli_state["ok"] or blocked else "install_cli",
-                      "help": "Node.js 를 먼저 설치하세요." if blocked else
-                              "메모를 읽고 일하는 AI 프로그램입니다. [설치하기]를 누르면 새 창에서 설치됩니다(1~3분)."})
-        login = _login_status(ai, cli) if cli_state["ok"] else {"ok": False, "detail": "AI 프로그램을 먼저 설치하세요"}
-        real_call = info["status"] == "real_call"
-        items.append({"id": "login", "name": f"AI 계정 로그인 ({info['name']})", "required": True, **login,
-                      "action": "" if login["ok"] or not cli_state["ok"] else "login",
-                      "action2": "verify_login" if real_call and cli_state["ok"] and not login["ok"] else "",
-                      "help": info["plan"] + " [로그인하기]를 누르면 새 창이 열립니다 — " + info["login_hint"]})
-        if ai == "claude":
-            git = find_git()
-            items.append({"id": "git", "name": "보조 도구 (Git)", "required": False, "ok": bool(git),
-                          "detail": "설치됨" if git else "아직 설치되지 않았습니다",
-                          "action": "" if git or not IS_WINDOWS else "install_git",
-                          "help": "있으면 AI 가 더 안정적으로 일합니다(파일 옮기기 등). 없어도 쓸 수는 있습니다. "
-                                  "설치 중 관리자 확인 창이 뜨면 '예'를 누르세요."})
+    items = [{"id": "python", "name": "기본 실행 환경 (Python)", "required": True, "ok": sys.version_info >= (3, 10),
+              "detail": f"Python {version}", "action": "", "help": ""}]
+    groups = []
+    for ai in ais:
+        steps = _ai_steps(ai)
+        groups.append({"ai": ai, "name": providers.get(ai)["name"], "ready": all(s["ok"] for s in steps), "steps": steps})
+    names = ", ".join(g["name"] for g in groups)
+    items.append({"id": "ai", "name": "쓸 AI 추가하기", "required": True, "ok": any(g["ready"] for g in groups),
+                  "detail": (f"추가함: {names}" + ("" if any(g["ready"] for g in groups) else " — 아직 준비된 AI 가 없습니다"))
+                  if groups else "아직 추가하지 않았습니다",
+                  "action": "choose",
+                  "help": "메모를 처리할 AI 를 하나 이상 추가합니다. 메모를 적을 때 그중 하나를 골라 보냅니다. 나중에 더하거나 뺄 수 있습니다."})
+    if "claude" in ais:
+        git = find_git()
+        items.append({"id": "git", "name": "보조 도구 (Git — Claude 에 권장)", "required": False, "ok": bool(git),
+                      "detail": "설치됨" if git else "아직 설치되지 않았습니다",
+                      "action": "" if git or not IS_WINDOWS else "install_git",
+                      "help": "있으면 Claude 가 더 안정적으로 일합니다(파일 옮기기 등). 없어도 쓸 수는 있습니다. "
+                              "설치 중 관리자 확인 창이 뜨면 '예'를 누르세요."})
     cards = [{"id": pid, "name": p["name"], "company": p["company"], "plan": p["plan"], "pitch": p["pitch"],
-              "installed": bool(providers.find_cli(pid)), "chosen": pid == ai} for pid, p in
+              "installed": bool(providers.find_cli(pid)), "added": pid in ais} for pid, p in
              ((pid, providers.PROVIDERS[pid]) for pid in providers.ORDER)]
-    data = {"ready": all(i["ok"] for i in items if i["required"]), "items": items, "ai": ai, "providers": cards,
+    data = {"ready": all(i["ok"] for i in items if i["required"]), "items": items, "groups": groups,
+            "ais": [{"id": g["ai"], "name": g["name"], "ready": g["ready"]} for g in groups], "providers": cards,
             "winget": bool(shutil.which("winget")), "windows": IS_WINDOWS}
     with _lock:
         _cache.update(at=time.monotonic(), data=data)
@@ -251,9 +284,12 @@ def run_action(action: str, value: str = "") -> dict:
     """버튼 — 고정된 명령만 돈다. Windows 가 아니면 손으로 칠 명령을 돌려준다."""
     with _lock:
         _cache["data"] = None   # 끝난 뒤 새로 재게
-    if action == "choose":
-        choose(value)
-        return {"chosen": value}
+    if action == "add":
+        add(value)
+        return {"added": added()}
+    if action == "remove":
+        remove(value)
+        return {"added": added()}
     if action in ("install_git", "install_node"):
         if not IS_WINDOWS:
             return {"manual": "OS 의 패키지 관리자로 설치하세요"}
@@ -265,9 +301,9 @@ def run_action(action: str, value: str = "") -> dict:
             _console("Node.js 설치", "Node.js 를 설치합니다. 몇 분 걸릴 수 있습니다. 끝날 때까지 이 창을 닫지 마세요.",
                      NODE_FROM_WINGET if has_winget else NODE_FROM_NODEJS_ORG)
         return {"opened": True}
-    ai = chosen()
+    ai = value if value in providers.PROVIDERS else (added()[0] if added() else "")
     if not ai:
-        raise ValueError("먼저 쓸 AI 를 고르세요")
+        raise ValueError("먼저 쓸 AI 를 추가하세요")
     info = providers.get(ai)
     cli = providers.find_cli(ai) or info["cli"]
     if action == "install_cli":

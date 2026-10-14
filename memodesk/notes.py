@@ -91,8 +91,9 @@ def _index(notes: list[dict], note_id: str | None) -> int | None:
     return None
 
 
-def add(folder: Path, text: str, kind: str = "code", before: str | None = None) -> dict:
-    """대기열에 넣는다. before 가 있으면 그 메모 바로 앞, 없으면 맨 뒤. 사람 메모는 처음부터 열림."""
+def add(folder: Path, text: str, kind: str = "code", before: str | None = None, ai: str = "") -> dict:
+    """대기열에 넣는다. before 가 있으면 그 메모 바로 앞, 없으면 맨 뒤. 사람 메모는 처음부터 열림.
+    ai = 이 메모를 처리할 AI(2026-10-14 — 메모를 적을 때 추가한 AI 중 하나를 골라 보낸다)."""
     text = text.strip()
     if not text:
         raise ValueError("빈 메모")
@@ -103,6 +104,8 @@ def add(folder: Path, text: str, kind: str = "code", before: str | None = None) 
     note = {"id": next_id(folder, notes), "kind": kind, "text": text, "status": "open" if human else "queued",
             "created_at": now(), "updated_at": now(),
             "log": [f"{now()} 사람이 처리할 메모 — AI 에게 맡기지 않음"] if human else []}
+    if ai:
+        note["ai"] = ai
     at = _index(notes, before) if before else None
     notes.insert(len(notes) if at is None else at, note)
     save(folder, notes)
@@ -180,6 +183,23 @@ def set_kind(folder: Path, note_id: str, kind: str) -> dict:
         set_status(folder, [note_id], "queued", message)
     else:
         set_status(folder, [note_id], "queued", message + " — 다시 맡김")
+    return note
+
+
+def set_ai(folder: Path, note_id: str, ai: str) -> dict:
+    """대기 중인 메모를 다른 AI 에게 보낸다. 처리 중이면 바꾸지 않는다(이미 그 AI 가 들고 있다)."""
+    notes = load(folder)
+    at = _index(notes, note_id)
+    if at is None:
+        raise ValueError(f"없는 메모: {note_id}")
+    note = notes[at]
+    if note["status"] == "working":
+        raise ValueError("처리 중인 메모는 AI 를 바꿀 수 없다 — 끝난 뒤에 바꾼다")
+    if note.get("ai") == ai:
+        return note
+    note["ai"] = ai
+    save(folder, notes)
+    set_status(folder, [note_id], note["status"], f"보낼 AI 를 {ai} 로 바꿈")
     return note
 
 
@@ -310,7 +330,8 @@ def runnable_groups(notes: list[dict], busy: set[str] | frozenset[str] = frozens
     """지금 시작할 수 있는 묶음 [(줄, 메모들)]. busy 는 작업이 도는 줄.
 
     줄이 다르면 서로 기다리지 않는다. 칸막이(BARRIERS)는 앞에 걸린 것이 없고 모든 줄이 쉴 때만 돌고, 뒤의 것은
-    그것이 끝날 때까지 기다린다. 묶음은 걸린 메모부터 **이어지는 같은 종류 대기 메모**다(처리 중이나 다른 종류에서 끊는다).
+    그것이 끝날 때까지 기다린다. 묶음은 걸린 메모부터 **이어지는 같은 종류 · 같은 AI 대기 메모**다(처리 중 · 다른 종류 · 다른 AI 에서 끊는다).
+    AI 가 달라도 한 프로젝트에서는 한 줄로 차례대로 돈다 — 두 AI 가 같은 폴더를 함께 고치면 한쪽을 되돌릴 때 다른 쪽이 고친 것까지 지운다.
     """
     busy = set(busy)
     pending = [n for n in notes if n.get("status") in ("queued", "working") and kind_of(n) in LANE]
@@ -324,7 +345,7 @@ def runnable_groups(notes: list[dict], busy: set[str] | frozenset[str] = frozens
             if ok:
                 group = [note]
                 for later in pending[i + 1:]:
-                    if later["status"] != "queued" or kind_of(later) != kind:
+                    if later["status"] != "queued" or kind_of(later) != kind or later.get("ai") != note.get("ai"):
                         break
                     group.append(later)
                 out.append((lane, group))

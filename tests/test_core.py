@@ -61,6 +61,15 @@ class NotesTests(unittest.TestCase):
         self.assertEqual([(lane, [n["id"] for n in g]) for lane, g in groups], [("ai", [a["id"], b["id"]])])
         self.assertEqual(notes.runnable_groups(notes.load(self.dir), {"ai"}), [])
 
+    def test_groups_split_by_ai(self) -> None:
+        a = notes.add(self.dir, "a", ai="claude")
+        b = notes.add(self.dir, "b", ai="claude")
+        notes.add(self.dir, "c", ai="codex")
+        groups = notes.runnable_groups(notes.load(self.dir))
+        self.assertEqual([[n["id"] for n in g] for _, g in groups], [[a["id"], b["id"]]])   # 다른 AI 에서 끊고, 한 줄로 차례대로
+        notes.set_ai(self.dir, b["id"], "codex")
+        self.assertEqual([[n["id"] for n in g] for _, g in notes.runnable_groups(notes.load(self.dir))], [[a["id"]]])
+
     def test_refine_keeps_previous_result_for_prompt(self) -> None:
         a = notes.add(self.dir, "버튼 글자 바꾸기")
         notes.set_result(self.dir, a["id"], "review", {"label": "고침", "headline": "바꿨어요", "detail": "- 글자", "files": ["a.html"]})
@@ -163,30 +172,58 @@ class SetupTests(unittest.TestCase):
     def setUp(self) -> None:
         reset_data()
 
-    def test_must_choose_ai_first(self) -> None:
+    def test_must_add_ai_first(self) -> None:
         data = setup.check(force=True)
-        self.assertEqual([i["id"] for i in data["items"]], ["python", "ai"])       # 고르기 전에는 두 줄뿐
+        self.assertEqual([i["id"] for i in data["items"]], ["python", "ai"])
+        self.assertEqual(data["groups"], [])
         self.assertFalse(data["ready"])
         self.assertEqual([c["id"] for c in data["providers"]], ["claude", "codex", "copilot", "cursor", "gemini"])
         with self.assertRaises(ValueError):
-            setup.run_action("install_cli")                                     # 고르기 전엔 설치할 AI 가 없다
+            setup.run_action("install_cli")                                     # 추가한 AI 가 없으면 설치할 것도 없다
 
-    def test_steps_per_ai(self) -> None:
-        setup.run_action("choose", "claude")
-        self.assertEqual([i["id"] for i in setup.check(force=True)["items"]], ["python", "ai", "cli", "login", "git"])
-        setup.run_action("choose", "codex")
-        self.assertEqual([i["id"] for i in setup.check(force=True)["items"]], ["python", "ai", "cli", "login"])
-        setup.run_action("choose", "gemini")
-        items = setup.check(force=True)["items"]
-        self.assertEqual([i["id"] for i in items], ["python", "ai", "node", "cli", "login"])   # Gemini 는 Node.js 먼저
-        setup.run_action("choose", "cursor")
-        self.assertEqual([i["id"] for i in setup.check(force=True)["items"]], ["python", "ai", "cli", "login"])
-        setup.run_action("choose", "copilot")   # winget 이 있으면 winget 으로, 없으면 npm 으로 깔아 Node.js 가 먼저
-        node_first = not shutil.which("winget")
-        self.assertEqual([i["id"] for i in setup.check(force=True)["items"]],
-                         ["python", "ai", *(["node"] if node_first else []), "cli", "login"])
+    def test_several_ais_each_with_own_steps(self) -> None:
+        setup.run_action("add", "claude")
+        setup.run_action("add", "cursor")
+        setup.run_action("add", "gemini")
+        data = setup.check(force=True)
+        self.assertEqual(setup.added(), ["claude", "cursor", "gemini"])
+        self.assertEqual([i["id"] for i in data["items"]], ["python", "ai", "git"])   # Git 은 Claude 를 추가했을 때만
+        steps = {g["ai"]: [s["id"] for s in g["steps"]] for g in data["groups"]}
+        self.assertEqual(steps["claude"], ["claude:cli", "claude:login"])
+        self.assertEqual(steps["cursor"], ["cursor:cli", "cursor:login"])
+        self.assertEqual(steps["gemini"], ["gemini:node", "gemini:cli", "gemini:login"])   # Gemini 는 Node.js 먼저
+        self.assertEqual(data["ready"], any(g["ready"] for g in data["groups"]))           # 하나라도 준비되면 쓸 수 있다
+        setup.run_action("remove", "cursor")
+        self.assertEqual(setup.added(), ["claude", "gemini"])
         with self.assertRaises(ValueError):
-            setup.run_action("choose", "nope")
+            setup.run_action("add", "nope")
+
+    def test_old_single_choice_is_read_as_added(self) -> None:
+        config.update(ai="codex")
+        self.assertEqual(setup.added(), ["codex"])
+
+    def test_unknown_action_refused(self) -> None:
+        setup.run_action("add", "claude")
+        with self.assertRaises(ValueError):
+            setup.run_action("rm -rf /")                                         # 고정된 동작만 받는다
+
+    def test_job_uses_memo_ai_and_refuses_missing_program(self) -> None:
+        project, _ = projects.add("noai", tempfile.mkdtemp())
+        folder = projects.data_dir(project["id"])
+        note = notes.add(folder, "할 일")
+        with self.assertRaises(ValueError):
+            runner.ai_job(project["id"], [note])                                 # AI 를 하나도 안 추가했다
+        note = notes.add(folder, "할 일", ai="cursor")
+        old = providers.find_cli
+        providers.find_cli = lambda pid: None
+        try:
+            with self.assertRaises(ValueError) as caught:
+                runner.ai_job(project["id"], [note])                             # 메모의 AI(Cursor)가 설치 안 됨
+            self.assertIn("Cursor", str(caught.exception))
+        finally:
+            providers.find_cli = old
+        self.assertTrue(all(n["status"] == "queued" for n in notes.load(folder)))   # 아무것도 안 바꿨다
+        self.assertFalse(runner.active_marker(project["id"], "ai").exists())
 
     def test_copilot_and_cursor_get_task_file_not_long_argument(self) -> None:
         """Copilot · Cursor 는 지시문을 파일로 받는다 — Windows 의 .cmd 실행 파일은 여러 줄 · 특수 문자 인자가 깨진다."""
@@ -221,27 +258,6 @@ class SetupTests(unittest.TestCase):
         finally:
             ai_clients._call = old
 
-    def test_unknown_action_refused(self) -> None:
-        setup.run_action("choose", "claude")
-        with self.assertRaises(ValueError):
-            setup.run_action("rm -rf /")                                         # 고정된 동작만 받는다
-
-    def test_job_refused_without_ai(self) -> None:
-        project, _ = projects.add("noai", tempfile.mkdtemp())
-        folder = projects.data_dir(project["id"])
-        note = notes.add(folder, "할 일")
-        with self.assertRaises(ValueError):
-            runner.ai_job(project["id"], [note])                                 # AI 를 안 골랐다
-        setup.run_action("choose", "claude")
-        old = providers.find_cli
-        providers.find_cli = lambda pid: None
-        try:
-            with self.assertRaises(ValueError):
-                runner.ai_job(project["id"], [note])                             # 골랐지만 설치 안 됨
-        finally:
-            providers.find_cli = old
-        self.assertEqual(notes.load(folder)[0]["status"], "queued")           # 아무것도 안 바꿨다
-        self.assertFalse(runner.active_marker(project["id"], "ai").exists())
 
 
 class ApiTests(unittest.TestCase):
@@ -272,7 +288,10 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(code, 200)
         pid = data["project"]["id"]
         runner.set_paused(pid, True)                                     # AI 를 부르지 않게 멈춘 채로
-        self.assertEqual(self.call("/api/notes", {"project": pid, "text": "할 일"})[0], 200)
+        self.assertEqual(self.call("/api/notes", {"project": pid, "text": "할 일"})[0], 400)   # 보낼 AI 가 없으면 거절
+        setup.add("claude")
+        self.assertEqual(self.call("/api/notes", {"project": pid, "text": "할 일", "ai": "codex"})[0], 400)   # 추가 안 한 AI
+        self.assertEqual(self.call("/api/notes", {"project": pid, "text": "할 일", "ai": "claude"})[0], 200)
         code, state = self.call("/api/state")
         row = next(p for p in state["projects"] if p["id"] == pid)
         self.assertEqual((row["paused"], [n["status"] for n in row["notes"]]), (True, ["queued"]))
@@ -285,7 +304,8 @@ class ApiTests(unittest.TestCase):
         (work / "keep.txt").write_text("그대로", encoding="utf-8")
         pid = self.call("/api/projects/add", {"name": "delete-me", "path": str(work)})[1]["project"]["id"]
         runner.set_paused(pid, True)
-        self.call("/api/notes", {"project": pid, "text": "할 일"})
+        setup.add("claude")
+        self.call("/api/notes", {"project": pid, "text": "할 일", "ai": "claude"})
         code, data = self.call("/api/projects/remove", {"project": pid, "delete_records": True})
         self.assertEqual(code, 200)
         self.assertTrue((work / "keep.txt").exists())                        # 실제 폴더는 그대로

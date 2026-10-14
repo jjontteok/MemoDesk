@@ -115,11 +115,12 @@ if (window.ResizeObserver) {
     .observe(document.body, { childList: true });
 }
 
-// ── AI 모델 · 추론 강도(사이드바 아래) — 고른 AI 의 것. 다음 작업부터 적용. 목록은 그 AI 프로그램이 받아 둔 것을 서버가 읽어 준다 ──
+// ── AI 모델 · 추론 강도(사이드바 아래) — 추가한 AI 마다 따로. 다음 작업부터 적용. 목록은 그 AI 프로그램이 받아 둔 것을 서버가 읽어 준다 ──
 document.getElementById("models").innerHTML = `
   <details id="m-fold">
     <summary><span class="mtitle">AI 모델</span><span class="mpicked" id="m-picked"></span></summary>
     <div class="mbody">
+    <label>AI<select id="m-which"></select></label>
     <label><span id="m-ai">모델</span><select id="m-model"></select></label>
     <input id="m-custom" class="hidden" placeholder="모델 이름 (Enter 로 저장)" spellcheck="false">
     <label id="m-effort-l">추론 강도<select id="m-effort"></select></label>
@@ -132,55 +133,70 @@ document.getElementById("models").innerHTML = `
   try { fold.open = localStorage.getItem("memodesk.models.open") === "1"; } catch { /* 저장소를 못 쓰면 접힌 채로 */ }
   fold.addEventListener("toggle", () => { try { localStorage.setItem("memodesk.models.open", fold.open ? "1" : "0"); } catch { /* 무시 */ } });
 }
-let modelState = null;
+let modelState = null, modelWhich = "";
+try { modelWhich = localStorage.getItem("memodesk.models.which") || ""; } catch { /* 무시 */ }
 const effortName = e => (modelState && modelState.effort_label[e]) || e;
-const modelInfo = id => (modelState?.models || []).find(x => x.id === id) || null;
+const currentModel = () => (modelState?.ais || []).find(a => a.ai === modelWhich) || null;
+const modelInfo = id => (currentModel()?.models || []).find(x => x.id === id) || null;
 function renderModels(m) {
   if (!m) return;
   modelState = m;
-  const sel = document.getElementById("m-model"), custom = document.getElementById("m-custom");
+  const list = m.ais || [];
+  if (!list.some(a => a.ai === modelWhich)) modelWhich = list[0]?.ai || "";
+  const which = document.getElementById("m-which"), sel = document.getElementById("m-model"), custom = document.getElementById("m-custom");
   const effortSel = document.getElementById("m-effort");
-  document.getElementById("m-ai").textContent = m.ai ? `${m.name} 모델` : "모델";
-  document.getElementById("m-hint").textContent = m.ai ? `${m.hint} · 다음 작업부터 적용` : "먼저 [환경 점검]에서 쓸 AI 를 고르세요";
-  sel.disabled = !m.ai;
-  document.getElementById("m-effort-l").classList.toggle("hidden", !m.has_effort);
-  if (![sel, custom, effortSel].includes(document.activeElement)) {   // 고르는 중인 칸은 새로고침이 덮지 않는다
-    const list = m.models || [], known = list.some(x => x.id === m.model);
+  const cur = currentModel();
+  if (![which, sel, custom, effortSel].includes(document.activeElement)) {   // 고르는 중인 칸은 새로고침이 덮지 않는다
+    const wh = list.map(a => `<option value="${esc(a.ai)}">${esc(a.name)}</option>`).join("");
+    if (which.dataset.sig !== wh) { which.innerHTML = wh; which.dataset.sig = wh; }
+    which.value = modelWhich;
+    which.disabled = !list.length;
+    sel.disabled = !cur;
+    document.getElementById("m-ai").textContent = cur ? `${cur.name} 모델` : "모델";
+    document.getElementById("m-hint").textContent = cur ? `${cur.hint} · 다음 작업부터 적용` : "먼저 [환경 점검]에서 AI 를 추가하세요";
+    document.getElementById("m-effort-l").classList.toggle("hidden", !cur || !cur.has_effort);
+    const models = cur?.models || [], known = models.some(x => x.id === cur?.model);
     const opt = x => `<option value="${esc(x.id)}">${esc(x.name)}</option>`;
-    const main = list.filter(x => x.main), rest = list.filter(x => !x.main);
+    const main = models.filter(x => x.main), rest = models.filter(x => !x.main);
     const html = `<option value="">기본</option>`
       + (rest.length ? `<optgroup label="주 모델">${main.map(opt).join("")}</optgroup><optgroup label="그 밖의 버전">${rest.map(opt).join("")}</optgroup>` : main.map(opt).join(""))
       + `<option value="__custom__">직접 입력…</option>`;
     if (sel.dataset.sig !== html) { sel.innerHTML = html; sel.dataset.sig = html; }
-    sel.value = m.model && !known ? "__custom__" : m.model;
-    custom.classList.toggle("hidden", !(m.model && !known));
-    if (m.model && !known) custom.value = m.model;
-    const info = modelInfo(m.model);
+    sel.value = cur && cur.model && !known ? "__custom__" : (cur?.model || "");
+    custom.classList.toggle("hidden", !(cur && cur.model && !known));
+    if (cur && cur.model && !known) custom.value = cur.model;
+    const info = modelInfo(cur?.model);
     const efforts = info && info.efforts.length ? info.efforts : ["low", "medium", "high"];
     const first = info && info.recommended ? `기본 (추천: ${effortName(info.recommended)})` : "기본";
     const eh = `<option value="">${esc(first)}</option>` + efforts.map(e => `<option value="${e}">${esc(effortName(e))}</option>`).join("");
     if (effortSel.dataset.sig !== eh) { effortSel.innerHTML = eh; effortSel.dataset.sig = eh; }
-    effortSel.value = efforts.includes(m.effort) ? m.effort : "";
+    effortSel.value = efforts.includes(cur?.effort) ? cur.effort : "";
   }
-  const info = modelInfo(m.model);
   const line = document.getElementById("m-picked");
-  line.textContent = m.ai ? `${m.name} · ${(info ? info.name : m.model) || "기본"}${m.effort ? " · " + effortName(m.effort) : ""}` : "AI 를 고르지 않았습니다";
+  line.textContent = list.length ? list.map(a => `${a.name} · ${(a.models.find(x => x.id === a.model)?.name || a.model) || "기본"}`).join(" / ") : "추가한 AI 가 없습니다";
   line.title = line.textContent;
 }
 async function saveModels(patch) {
-  const body = { model: modelState?.model || "", effort: modelState?.effort || "", ...patch };
+  const cur = currentModel();
+  if (!cur) return;
+  const body = { ai: cur.ai, model: cur.model || "", effort: cur.effort || "", ...patch };
   const info = modelInfo(body.model);
   if (info && body.effort && info.efforts.length && !info.efforts.includes(body.effort)) body.effort = "";   // 새 모델이 안 받는 강도는 기본으로
   const { res, data } = await postJson("/api/models", body);
   const msg = document.getElementById("m-msg");
   if (!res.ok) { msg.style.color = "var(--bad)"; msg.textContent = data.error || "저장 실패"; return; }
   msg.style.color = "";
-  msg.textContent = "저장함 — 다음 작업부터";
+  msg.textContent = `저장함 — ${cur.name} · 다음 작업부터`;
   document.activeElement && document.activeElement.blur();
   renderModels(data.models);
 }
 {
-  const sel = document.getElementById("m-model"), custom = document.getElementById("m-custom");
+  const which = document.getElementById("m-which"), sel = document.getElementById("m-model"), custom = document.getElementById("m-custom");
+  which.addEventListener("change", () => {
+    modelWhich = which.value;
+    try { localStorage.setItem("memodesk.models.which", modelWhich); } catch { /* 무시 */ }
+    which.blur(); renderModels(modelState);
+  });
   sel.addEventListener("change", () => {
     if (sel.value === "__custom__") { custom.classList.remove("hidden"); custom.focus(); return; }
     custom.classList.add("hidden");

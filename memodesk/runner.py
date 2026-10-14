@@ -122,14 +122,15 @@ class Job:
 
 
 def new_stamp() -> str:
-    """작업 번호. 한 초에 여러 작업이 생겨도 겹치지 않게 뒤에 번호를 붙인다."""
+    """작업 번호. 한 초에 여러 작업이 생겨도 겹치지 않게 뒤에 번호를 붙인다.
+    시계가 뒤로 가도 멈추지 않는다(2026-10-14 실측 — Windows 시계가 4시간 앞섰다가 돌아오자, 지금 초에 뒷번호를 붙여 가며
+    마지막 번호보다 커지길 기다리는 반복이 LOCK 을 쥔 채 끝나지 않아 화면이 통째로 멈췄다). 지금 시각이 마지막 번호의 초보다
+    뒤가 아니면 **마지막 번호의 초에 뒷번호만 하나 올린다** — 반복이 없다."""
     global _last_stamp
     with _STAMP_LOCK:
-        base = datetime.now(KST).strftime("%Y%m%d-%H%M%S")
-        stamp, n = base, 1
-        while stamp <= _last_stamp:
-            stamp = f"{base}-{n}"
-            n += 1
+        base = datetime.now(KST).strftime("%Y%m%d-%H%M%S")   # 15자 — 마지막 번호의 앞 15자와 견준다
+        last_base, last_n = _last_stamp[:15], _last_stamp[16:]
+        stamp = base if base > last_base else f"{last_base}-{int(last_n or 0) + 1}"
         _last_stamp = stamp
         return stamp
 

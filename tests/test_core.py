@@ -387,5 +387,35 @@ class ApiTests(unittest.TestCase):
         self.assertNotIn(pid, [p["id"] for p in self.call("/api/state")[1]["projects"]])
 
 
+
+class NewStampClockTests(unittest.TestCase):
+    """작업 번호 — 시계가 뒤로 가도 멈추지 않는다(2026-10-14 실측: 4시간 앞섰다 돌아오자 무한 반복으로 화면이 멈춤)."""
+
+    def stamps(self, module, times):
+        from datetime import datetime as real
+        seq = iter(times)
+
+        class Clock:
+            @staticmethod
+            def now(tz=None):
+                return real.strptime(next(seq), "%H:%M:%S").replace(year=2026, month=10, day=14, tzinfo=tz)
+
+        saved_dt, saved_last = module.datetime, module._last_stamp
+        module.datetime, module._last_stamp = Clock, ""
+        try:
+            return [module.new_stamp() for _ in times]
+        finally:
+            module.datetime, module._last_stamp = saved_dt, saved_last
+
+    def check(self, module):
+        same = self.stamps(module, ["15:16:58"] * 12)
+        self.assertEqual(len(set(same)), 12)
+        self.assertEqual(same[:3], ["20261014-151658", "20261014-151658-1", "20261014-151658-2"])
+        back = self.stamps(module, ["19:16:03", "15:16:58", "15:16:59", "19:16:10"])   # 앞섰다가 뒤로 — 바로 돌아온다
+        self.assertEqual(back, ["20261014-191603", "20261014-191603-1", "20261014-191603-2", "20261014-191610"])
+
+    def test_runner_new_stamp(self):
+        self.check(runner)
+
 if __name__ == "__main__":
     unittest.main()

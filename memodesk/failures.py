@@ -12,9 +12,10 @@ from pathlib import Path
 
 # (로그에 이 문구 중 하나가 있으면, 사람에게 보일 이유와 할 일) — 위에서부터 먼저 맞는 것
 PATTERNS: list[tuple[tuple[str, ...], str]] = [
-    (("Invalid API key", "Please run /login", "OAuth token has expired", "authentication_error", "Not logged in"),
-     "클로드 로그인이 끊겼습니다 — 터미널에서 claude 를 실행해 /login 한 뒤 [다시 맡기기]"),
-    (("usage limit", "rate_limit_error", "Rate limit reached", "hit your limit"),
+    (("Invalid API key", "Please run /login", "OAuth token has expired", "authentication_error", "Not logged in",
+      "refresh_token_invalidated", "token_revoked", "Please log in again", "Please set an Auth method"),
+     "AI 계정 로그인이 끊겼습니다 — 왼쪽 [환경 점검]에서 다시 로그인한 뒤 [다시 맡기기]"),
+    (("usage limit", "rate_limit_error", "Rate limit reached", "hit your limit", "RESOURCE_EXHAUSTED", "Quota exceeded"),
      "AI 사용 한도에 걸렸습니다 — 한도가 풀린 뒤 [다시 맡기기]"),
     (("overloaded_error", "at capacity"),
      "AI 서버가 혼잡합니다 — 잠시 뒤 [다시 맡기기]"),
@@ -22,8 +23,8 @@ PATTERNS: list[tuple[tuple[str, ...], str]] = [
      "AI 가 제한 시간 안에 끝내지 못했습니다 — 메모를 나눠 적어 [다시 맡기기]"),
     (("백업할 크기가 상한",),
      "프로젝트가 너무 커서 백업을 못 했습니다 — [설정]에서 백업 제외 목록을 늘리세요"),
-    (("command not found: claude", "'claude' is not recognized", "No such file or directory: 'claude'", "[WinError 2]"),
-     "클로드 CLI 를 찾지 못했습니다 — Claude Code 가 설치되어 있고 터미널에서 claude 가 실행되는지 확인하세요"),
+    (("is not recognized as an internal or external command", "command not found", "[WinError 2]"),
+     "AI 프로그램을 찾지 못했습니다 — 왼쪽 [환경 점검]에서 설치를 확인하세요"),
 ]
 
 

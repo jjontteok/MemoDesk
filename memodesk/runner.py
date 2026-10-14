@@ -23,7 +23,7 @@ import threading
 from datetime import datetime
 from pathlib import Path
 
-from memodesk import config, failures, notes, notify, projects, setup, usage
+from memodesk import config, failures, notes, notify, projects, providers, setup, usage
 from memodesk.notes import KST
 
 IS_WINDOWS = os.name == "nt"
@@ -32,7 +32,7 @@ STATE_NAME = "state.json"           # 프로젝트별 멈춤 · '이번 작업 �
 USAGE_KEEP = 10
 BACKUP_MAX_BYTES = 500 * 1024 * 1024
 # 메모 종류 → (단계 이름, 작업 모듈, 결과 파일)
-AI_KIND = {"code": ("코드 고치기", "memodesk.agents.claude_fix", "last-fix.json")}
+AI_KIND = {"code": ("AI 처리", "memodesk.agents.fix", "last-fix.json")}
 RESULT_LABEL = {"fixed": "고침", "needs_confirm": "확인 필요", "not_fixed": "못 고침"}
 DONE_RESULTS = {"fixed"}            # 확인 대기로 보내는 결과 — 파일이 실제로 바뀐 것
 
@@ -254,7 +254,8 @@ def kill_tree(proc: subprocess.Popen) -> None:
 # ── 작업 실행 ────────────────────────────────────────────────────────────────
 
 def job_env() -> dict:
-    return dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONUTF8="1")
+    # 설치 직후에도 AI 프로그램 · node 를 찾게 기본 설치 자리를 PATH 앞에 붙인 환경(setup.tool_env)
+    return dict(setup.tool_env(), PYTHONIOENCODING="utf-8", PYTHONUTF8="1")
 
 
 def run_job(job: Job) -> None:
@@ -351,10 +352,10 @@ def apply_ai_result(job: Job) -> str:
     return " · ".join(parts)
 
 
-def model_args() -> list[str]:
-    data = config.load()
-    return ((["--model", data["claude_model"]] if data.get("claude_model") else [])
-            + (["--effort", data["claude_effort"]] if data.get("claude_effort") else []))
+def model_args(ai: str) -> list[str]:
+    picked = (config.load().get("models") or {}).get(ai) or {}
+    return ((["--model", picked["model"]] if picked.get("model") else [])
+            + (["--effort", picked["effort"]] if picked.get("effort") else []))
 
 
 def ai_job(pid: str, group: list[dict]) -> Job:
@@ -364,9 +365,12 @@ def ai_job(pid: str, group: list[dict]) -> Job:
     kind = notes.kind_of(group[0])
     ids = [n["id"] for n in group]
     label, module, result_name = AI_KIND[kind]
-    claude = setup.find_claude()
-    if not claude:
-        raise ValueError("Claude Code CLI 가 설치되어 있지 않다 — 화면 위 [시작하기 전에]에서 설치한 뒤 [다시 맡기기]")
+    ai = setup.chosen()
+    if not ai:
+        raise ValueError("쓸 AI 를 아직 고르지 않았다 — 왼쪽 [환경 점검]에서 고른 뒤 [다시 맡기기]")
+    cli = providers.find_cli(ai)
+    if not cli:
+        raise ValueError(f"AI 프로그램({providers.get(ai)['cli_name']})이 설치되어 있지 않다 — 왼쪽 [환경 점검]에서 설치한 뒤 [다시 맡기기]")
     (folder / result_name).unlink(missing_ok=True)   # 지난 작업의 결과를 이번 것으로 읽지 않게
     backup_project(pid, stamp, kind)
     try:
@@ -374,7 +378,7 @@ def ai_job(pid: str, group: list[dict]) -> Job:
     except Exception:
         active_marker(pid, notes.LANE[kind]).unlink(missing_ok=True)   # 아무것도 안 바꿨다
         raise
-    cmd = [sys.executable, "-B", "-m", module, "--project", pid, "--stamp", stamp, "--claude-bin", claude, *model_args()]
+    cmd = [sys.executable, "-B", "-m", module, "--project", pid, "--stamp", stamp, "--provider", ai, "--cli", cli, *model_args(ai)]
     job = Job(pid, [(label, cmd, config.APP_DIR)], stamp, ids, kind)
     write_log(job, f"{project_name(pid)} · {label} · 메모 {', '.join(ids)}")
     return job

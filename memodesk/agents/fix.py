@@ -1,13 +1,12 @@
-"""코드 메모 → 클로드. 처리기(runner)가 작업으로 부른다 — 이 스크립트는 **결과만** 내고 메모 상태는 처리기가 바꾼다.
+"""메모 → 고른 AI(Claude · Codex · Gemini). 처리기(runner)가 작업으로 부른다 — 이 스크립트는 **결과만** 내고 메모 상태는 처리기가 바꾼다.
 
-    python -B -m memodesk.agents.claude_fix --project <id> --stamp <작업 번호> [--model …] [--effort …]
+    python -B -m memodesk.agents.fix --project <id> --stamp <작업 번호> --provider claude|codex|gemini --cli <실행 파일> [--model …] [--effort …]
 
-- 클로드는 프로젝트 경로에서 돈다(그 폴더의 CLAUDE.md 를 스스로 읽는다). `--setting-sources project` 로 사용자 전역 설정의
-  허용 규칙은 물려받지 않는다.
-- 허용 명령은 `mv` · `mkdir` · `cp`. **`rm` · `rmdir` · `del` · `git` 은 거부 목록으로 막는다** — `acceptEdits` 는 작업 폴더 안의
-  `rm` 을 허용 목록과 상관없이 자동 허락한다(차시 작업대 실측). 지울 파일은 REMOVED_DIR 로 옮기게 한다.
+- AI 는 프로젝트 경로에서 돈다(그 폴더의 CLAUDE.md · AGENTS.md 를 스스로 읽는다).
 - 열어 주는 다른 폴더는 메모 첨부 그림 폴더와 REMOVED_DIR 뿐 — 기록 폴더(notes.json)는 열지 않는다.
-- 끝난 뒤 프로젝트가 git 레포 안에 있으면 **프로젝트 경로 밖**이 바뀌었는지 본다(`mv` 는 경로를 막을 수 없다). 되돌리지는 않고 ⚠ 로 적는다.
+- AI 마다 안전장치가 다르다(ai_clients.py). Claude 는 `rm` · `git` 을 거부 목록으로 막는다 — `acceptEdits` 는 작업 폴더 안의
+  `rm` 을 허용 목록과 상관없이 자동 허락한다(차시 작업대 실측). Codex 는 폴더 밖 쓰기를 막는 보호 모드, Gemini 는 파일 고치기만 자동 승인.
+- 끝난 뒤 프로젝트가 git 레포 안에 있으면 **프로젝트 경로 밖**이 바뀌었는지 본다. 되돌리지는 않고 ⚠ 로 적는다.
 - 결과는 `{기록 폴더}/last-fix.json`.
 
 종료 코드: 0 끝남 · 1 실패
@@ -21,8 +20,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-from memodesk import config, notes, projects, usage
-from memodesk.ai_clients import ClaudeClient
+from memodesk import config, notes, projects, providers, usage
+from memodesk.ai_clients import make_client
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -64,12 +63,13 @@ def build_prompt(project: dict, working: list[dict], folder: Path, removed_dir: 
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="MemoDesk 코드 메모 → 클로드")
+    parser = argparse.ArgumentParser(description="MemoDesk 메모 → AI")
     parser.add_argument("--project", required=True)
     parser.add_argument("--stamp", required=True)
     parser.add_argument("--model", default=None)
     parser.add_argument("--effort", default=None, choices=["low", "medium", "high", "xhigh", "max", "ultra"])
-    parser.add_argument("--claude-bin", default="claude")
+    parser.add_argument("--provider", default="claude", choices=list(providers.PROVIDERS))
+    parser.add_argument("--cli", default="", help="AI CLI 실행 파일(처리기가 찾은 경로). 없으면 PATH 에서")
     parser.add_argument("--timeout-seconds", type=int, default=2400)
     args = parser.parse_args()
 
@@ -86,17 +86,17 @@ def main() -> int:
     removed_dir.mkdir(parents=True, exist_ok=True)
     attach_dir = folder / notes.ATTACH_DIR
     attach_dir.mkdir(parents=True, exist_ok=True)
-    client = ClaudeClient(claude_bin=args.claude_bin, cwd=path, timeout_seconds=args.timeout_seconds,
-                          allowed_tools=ALLOWED_TOOLS, disallowed_tools=DENIED_TOOLS, effort=args.effort or "",
-                          add_dirs=(str(attach_dir), str(removed_dir)))
+    client = make_client(args.provider, args.cli or providers.get(args.provider)["cli"], path,
+                         (str(attach_dir), str(removed_dir)), effort=args.effort or "",
+                         allowed=ALLOWED_TOOLS, denied=DENIED_TOOLS, timeout=args.timeout_seconds)
     output = folder / RESULT_NAME
     output.unlink(missing_ok=True)
-    print(f"코드 메모 {len(working)}건 · {project['name']} · {path}")
+    print(f"메모 {len(working)}건 · {providers.get(args.provider)['name']} · {project['name']} · {path}")
 
     root = git_root(path)
     before = git_changes(root) if root else None
     client.run_prompt(build_prompt(project, working, folder, removed_dir), SCHEMA, output, model=args.model or None,
-                      stage="claude_fix")
+                      stage=f"fix:{args.provider}")
     if not output.exists():
         print("결과 파일이 없다")
         return 1

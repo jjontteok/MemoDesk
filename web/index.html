@@ -45,14 +45,6 @@
   .pform .ftitle { font-size: 14px; font-weight: 700; color: var(--ink); }   /* 항목 이름은 아래 설명보다 크게 */
   .add { display: flex; gap: 8px; margin: 12px 0 8px; flex-wrap: wrap; }
   .add textarea { flex: 1; min-height: 64px; resize: vertical; }
-  .kinds { display: flex; flex-direction: column; gap: 4px; }
-  .kinds label { position: relative; cursor: pointer; }
-  .kinds input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }
-  .kinds span { display: block; text-align: center; min-width: 52px; padding: 5px 10px; font-size: 13px;
-                border: 1px solid var(--line); border-radius: 8px; background: var(--chip); color: var(--ink); }
-  .kinds label:hover span { border-color: var(--accent); }
-  .kinds input:checked + span { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .kinds input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
   .submit { display: flex; flex-direction: column; gap: 6px; width: 170px; }
   .submit select { font: inherit; font-size: 12px; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 4px; }
   .submit .save { flex: 1; }
@@ -76,8 +68,6 @@
   .grip { color: var(--muted); font-size: 16px; line-height: 1; margin-right: 2px; user-select: none; }
   .pos { font-weight: 700; color: var(--muted); min-width: 22px; text-align: right; }
   .nid { font-weight: 700; color: var(--muted); display: grid; gap: 2px; justify-items: start; align-content: start; align-self: start; }
-  .kind { font-size: 11px; font-weight: 400; padding: 0 6px; border-radius: 999px; background: var(--chip); }
-  .k-code { color: var(--accent); } .k-human { color: var(--bad); }
   .ntext { white-space: pre-wrap; word-break: break-word; }
   .nlog { color: var(--muted); font-size: 12px; margin-top: 2px; }
   details.nres { margin-top: 4px; font-size: 12px; }
@@ -139,7 +129,6 @@
   .st-queued { color: var(--accent); } .st-working { color: var(--warn); } .st-open { color: var(--bad); }
   .st-review { color: var(--ok); } .st-done { color: var(--muted); text-decoration: line-through; }
   ul.notes > li.done .ntext { color: var(--muted); }
-  select.kindsel { font: inherit; font-size: 12px; color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 2px 4px; }
   ol.refines { margin: 4px 0 0; padding-left: 18px; font-size: 13px; }
   ol.refines li { display: list-item; padding: 0; border: 0; background: none; }
   .refine { grid-column: 1 / -1; display: grid; gap: 6px; margin-top: 4px; }
@@ -195,6 +184,14 @@
   .modal .bar .sp { flex: 1; }
   .modal .start { padding: 10px 26px; font-size: 15px; }
   .modal .checking { color: var(--muted); padding: 24px 0; text-align: center; }
+  .modal .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; margin-top: 10px; }
+  .modal .aicard { border: 2px solid var(--line); border-radius: 12px; padding: 12px; display: grid; gap: 6px; align-content: start; background: var(--card); }
+  .modal .aicard.on { border-color: var(--accent); background: var(--hl); }
+  .modal .aicard .nm { font-size: 16px; font-weight: 800; } .modal .aicard .co { font-size: 12px; color: var(--muted); margin-left: 4px; font-weight: 400; }
+  .modal .aicard .pitch { font-size: 13px; line-height: 1.5; }
+  .modal .aicard .plan { font-size: 12px; color: var(--muted); line-height: 1.5; }
+  .modal .aicard .badge { font-size: 11px; color: var(--ok); }
+  .modal .aicard button { justify-self: start; }
   .setup-btn { width: 100%; margin-top: 8px; }
   .welcome { background: var(--card); border: 1px dashed var(--line); border-radius: 12px; padding: 24px; }
   .welcome h2 { margin-top: 0; }
@@ -206,7 +203,6 @@
   }
   @media (max-width: 640px) {
     .actions { margin-left: 0; width: 100%; }
-    .kinds { flex-direction: row; }
     .add textarea { flex-basis: 100%; }
     .submit { width: 100%; flex-direction: row; }
     ol.queue > li, ul.notes > li { grid-template-columns: auto 1fr; }
@@ -255,8 +251,7 @@
 <script>
 const STATUS = { queued: "대기", working: "처리 중", review: "확인 대기", open: "열림", done: "완료" };
 const JOB = { running: "도는 중", ok: "끝남", failed: "실패", stopped: "멈춤" };
-const NOTE_KIND = { code: "코드", human: "사람" };
-const AI_OF = { code: "클로드", human: "사람이 처리" };
+const aiName = () => (setupData && (setupData.providers || []).find(p => p.chosen)?.name) || "AI";   // 지금 고른 AI 이름
 const cards = new Map();
 const filter = { group: "all", project: "all" };
 try { for (const k of Object.keys(filter)) filter[k] = localStorage.getItem(`memodesk-${k}`) || "all"; } catch {}
@@ -362,11 +357,7 @@ function makeCard(row) {
         <button class="danger f-remove" type="button" title="MemoDesk 에서 이 프로젝트를 지웁니다. 실제 폴더와 파일은 그대로 둡니다">프로젝트 삭제</button></div>
     </section>
     <div class="add">
-      <div class="kinds">
-        <label title="클로드가 프로젝트 폴더 안의 일을 합니다"><input type="radio" name="k-${esc(row.id)}" value="code" checked><span>코드</span></label>
-        <label title="AI 에게 맡기지 않고 사람이 처리할 할 일로 적어 둡니다"><input type="radio" name="k-${esc(row.id)}" value="human"><span>사람</span></label>
-      </div>
-      <textarea placeholder="할 일 (예: 로그인 버튼 글자를 '시작하기'로 / README 설치 방법에 Windows 안내 추가) · 화면 캡처는 Ctrl+V 로 붙여 넣거나 끌어다 놓으세요 · Enter 로 적기, Shift+Enter 줄바꿈"></textarea>
+      <textarea placeholder="AI 에게 맡길 메모 (예: 3쪽 제목을 더 짧게 / 발표 순서가 자연스러운지 봐 줘 / 로그인 버튼 글자를 '시작하기'로) · 화면 캡처는 Ctrl+V 로 붙여 넣거나 끌어다 놓으세요 · Enter 로 적기, Shift+Enter 줄바꿈"></textarea>
       <div class="paste-thumbs"></div>
       <div class="submit"><select class="before" aria-label="넣을 자리"><option value="">대기열 맨 뒤에</option></select><button class="primary save">적기</button></div>
     </div>
@@ -388,10 +379,9 @@ function makeCard(row) {
   const save = async () => {
     if (saving) return;
     if (!ta.value.trim()) { if (el._pending.length) el.querySelector(".err").textContent = "그림과 함께 할 일을 글로 적어 주세요"; return; }
-    const kind = el.querySelector(".kinds input:checked")?.value || "code";
     saving = true;
     try {
-      if ((await post("/api/notes", { ...ref(), text: ta.value, kind, before: beforeSel.value, images: el._pending }, el)).ok) {
+      if ((await post("/api/notes", { ...ref(), text: ta.value, before: beforeSel.value, images: el._pending }, el)).ok) {
         ta.value = ""; beforeSel.value = ""; el._pending = []; drawPending();
       }
     } finally { saving = false; }
@@ -501,20 +491,6 @@ function makeCard(row) {
     el._dragging = false; el._dragId = ""; clearMarks();
     queue.querySelectorAll(".dragging").forEach(x => x.classList.remove("dragging"));
   });
-  const onKindChange = e => {
-    const s = e.target.closest("select.kindsel");
-    if (!s) return;
-    const note = el._row.notes.find(n => n.id === s.dataset.id);
-    const kind = s.value;
-    s.blur();
-    if (!note || kind === (note.kind || "code")) return;
-    const ask = kind === "human" ? `${note.id} 를 사람이 처리할 메모로 돌릴까요? (AI 대기열에서 빠지고 열림으로 남습니다)`
-      : note.status !== "queued" ? `${note.id} 를 ${NOTE_KIND[kind]} 메모로 바꿔 ${AI_OF[kind]}에게 맡길까요?` : "";
-    if (ask && !confirm(ask)) { s.value = note.kind || "code"; return; }
-    post("/api/notes/kind", { ...ref(), id: note.id, kind }, el);
-  };
-  queue.onchange = onKindChange;
-  el.querySelector(".notes").onchange = onKindChange;
   const sendRefine = async id => {
     const text = (el._refine?.draft || "").trim();
     if (!text) { el.querySelector(".err").textContent = "보완할 내용을 적어 주세요"; return; }
@@ -624,22 +600,14 @@ function pendingThumbs(list, act, when) {
     + (list.length ? `<span class="meta">그림 ${list.length}장 — ${when}</span>` : "");
 }
 function noteHead(n, pid) {
-  const k = n.kind || "code";
-  return `<span class="nid">${esc(n.id)}<span class="kind k-${esc(k)}" title="${AI_OF[k] || ""}">${NOTE_KIND[k] || esc(k)}</span></span>
+  return `<span class="nid">${esc(n.id)}</span>
       <div><div class="ntext">${esc(n.text)}</div>${attachThumbs(pid, n.id, n.images)}${refinements(n, pid)}${noteLog(n)}</div>`;
 }
-function kindSelect(n) {
-  const k = n.kind || "code";
-  const tip = n.status === "queued" ? "종류를 잘못 골랐으면 바꿉니다" : "바꾸면 그 종류로 다시 맡깁니다";
-  return `<select class="kindsel" data-id="${esc(n.id)}" title="${tip}">`
-    + Object.entries(NOTE_KIND).map(([v, name]) => `<option value="${v}"${v === k ? " selected" : ""}>${v === k ? "종류: " : "→ "}${name}</option>`).join("") + `</select>`;
-}
-// 종류 칸 · 보완 칸 · 고치기 칸을 쓰는 중에는 2초 새로고침이 목록을 다시 그리지 않는다(칸이 닫히고 글이 날아간다)
-const pickingKind = el => document.activeElement && document.activeElement.matches("select.kindsel, textarea.refine-text, textarea.edit-text") && el.contains(document.activeElement);
+// 보완 칸 · 고치기 칸을 쓰는 중에는 2초 새로고침이 목록을 다시 그리지 않는다(칸이 닫히고 글이 날아간다)
+const pickingKind = el => document.activeElement && document.activeElement.matches("textarea.refine-text, textarea.edit-text") && el.contains(document.activeElement);
 const editing = (el, n) => el._edit && el._edit.id === n.id && n.status === "queued";
 function editHead(el, n, pid) {
-  const k = n.kind || "code";
-  return `<span class="nid">${esc(n.id)}<span class="kind k-${esc(k)}">${NOTE_KIND[k]}</span></span>
+  return `<span class="nid">${esc(n.id)}</span>
       <div><div class="refine"><textarea class="edit-text" data-id="${esc(n.id)}" placeholder="메모 글 — Enter 로 저장 · Shift+Enter 줄바꿈 · Esc 취소">${esc(el._edit.draft)}</textarea>
         <div class="refine-acts"><button class="primary" data-act="edit-save" data-id="${esc(n.id)}">저장</button><button data-act="edit-cancel" data-id="${esc(n.id)}">취소</button></div>
       </div>${attachThumbs(pid, n.id, n.images)}${noteLog(n)}</div>`;
@@ -654,7 +622,7 @@ function renderQueue(el, row) {
     const qi = queued.indexOf(n);
     const b = (act, label, extra = "", dis = false) => `<button data-act="${act}" data-id="${esc(n.id)}" ${extra} ${dis ? "disabled" : ""}>${label}</button>`;
     const acts = n.status === "working" ? `<span class="st st-working">처리 중</span>`
-      : `<span class="st st-queued">대기</span>` + b("edit", "고치기", 'title="처리 전에 메모 글을 고칩니다"') + kindSelect(n)
+      : `<span class="st st-queued">대기</span>` + b("edit", "고치기", 'title="처리 전에 메모 글을 고칩니다"')
         + b("move", "↑", `data-before="${qi > 0 ? esc(queued[qi - 1].id) : ""}" title="위로"`, qi <= 0)
         + b("move", "↓", `data-before="${qi + 2 < queued.length ? esc(queued[qi + 2].id) : ""}" title="아래로"`, qi >= queued.length - 1)
         + b("delete", "지우기");
@@ -679,15 +647,15 @@ function renderDone(el, row) {
   const scrolled = list.scrollTop;
   list.innerHTML = done.map(n => {
     const b = (act, label) => `<button data-act="${act}" data-id="${esc(n.id)}">${label}</button>`;
-    const again = n.kind === "human" ? [kindSelect(n)] : [b("requeue", "다시 맡기기"), b("refine", "보완해서 다시 맡기기"), kindSelect(n)];
+    const again = [b("requeue", "다시 맡기기"), b("refine", "보완해서 다시 맡기기")];
     const close = [...(n.status === "review" || n.status === "open" ? [b("done", "완료")] : []), b("delete", "지우기")];
     const form = el._refine && el._refine.id === n.id ? `<div class="refine">
         <textarea class="refine-text" data-id="${esc(n.id)}" placeholder="지난 결과에서 고칠 점 · 덧붙일 것. 캡처는 Ctrl+V · 끌어 놓기. Enter 로 맡기기 · Shift+Enter 줄바꿈">${esc(el._refine.draft)}</textarea>
         <div class="paste-thumbs refine-thumbs">${pendingThumbs(el._refine.images || [], "refine-img-del", "[다시 맡기기] 때 같이 올립니다")}</div>
-        <div class="refine-acts"><span class="meta">원래 메모와 지난 결과를 함께 ${AI_OF[n.kind || "code"]}에게 넘깁니다</span>
+        <div class="refine-acts"><span class="meta">원래 메모와 지난 결과를 함께 AI 에게 넘깁니다</span>
           <button class="primary" data-act="refine-send" data-id="${esc(n.id)}">다시 맡기기</button><button data-act="refine-cancel" data-id="${esc(n.id)}">취소</button></div></div>` : "";
     return `<li class="${esc(n.status)}">${noteHead(n, row.id)}
-      <div class="nact rows"><div class="arow"><span class="st st-${esc(n.status)}">${n.kind === "human" && n.status === "open" ? "사람이 처리" : STATUS[n.status] || esc(n.status)}</span></div>
+      <div class="nact rows"><div class="arow"><span class="st st-${esc(n.status)}">${STATUS[n.status] || esc(n.status)}</span></div>
         <div class="arow">${again.join("")}</div><div class="arow">${close.join("")}</div></div>${form}</li>`;
   }).join("");
   fitDone(el);
@@ -722,18 +690,19 @@ function renderUsage(el, row) {
   const rows = row.usage || [];
   const cost = rows.reduce((s, u) => s + (u.cost_usd || 0), 0);
   const tokens = rows.reduce((s, u) => s + (u.input || 0) + (u.output || 0), 0);
-  box.querySelector("summary").textContent = rows.length ? `AI 사용량 — 최근 ${rows.length}개 작업 · 토큰 ${tok(tokens)} · 비용 $${cost.toFixed(2)}` : "AI 사용량 — 아직 없음";
+  const hasCost = rows.some(u => u.cost_usd != null);   // Codex · Gemini 는 비용을 알려 주지 않는다 — $0.00 으로 보이지 않게
+  box.querySelector("summary").textContent = rows.length ? `AI 사용량 — 최근 ${rows.length}개 작업 · 토큰 ${tok(tokens)}${hasCost ? ` · 비용 $${cost.toFixed(2)}` : ""}` : "AI 사용량 — 아직 없음";
   const sig = JSON.stringify(rows);
   if (box.dataset.sig === sig) return;
   box.dataset.sig = sig;
   box.querySelector(".table-wrap").innerHTML = rows.length ? `<table>
     <tr><th class="l">작업 시각</th><th class="l">메모</th><th class="l">AI</th><th>입력 토큰 (캐시)</th><th>출력 토큰</th><th>비용</th><th>시간</th><th class="l">결과</th></tr>
     ${rows.map(u => `<tr><td class="l">${time(u.started) || esc(u.id)}</td><td class="l">${esc((u.note_ids || []).join(", "))}</td>
-      <td class="l">${u.provider === "claude" ? "클로드" : esc(u.provider)}${u.model && u.model !== "default" ? ` (${esc(u.model)})` : ""}</td>
+      <td class="l">${esc({ claude: "Claude", codex: "ChatGPT (Codex)", gemini: "Gemini" }[u.provider] || u.provider)}${u.model && u.model !== "default" ? ` (${esc(u.model)})` : ""}</td>
       <td>${tok(u.input)} (${tok(u.cached)})</td><td>${tok(u.output)}</td><td>${u.cost_usd == null ? "-" : "$" + u.cost_usd.toFixed(2)}</td>
       <td>${Math.round(u.seconds)}초</td><td class="l">${JOB[u.state] || esc(u.state)}</td></tr>`).join("")}
     <tr class="sum"><td class="l" colspan="3">합계</td><td>${tok(rows.reduce((s, u) => s + (u.input || 0), 0))} (${tok(rows.reduce((s, u) => s + (u.cached || 0), 0))})</td>
-      <td>${tok(rows.reduce((s, u) => s + (u.output || 0), 0))}</td><td>$${cost.toFixed(2)}</td><td>${Math.round(rows.reduce((s, u) => s + (u.seconds || 0), 0))}초</td><td></td></tr>
+      <td>${tok(rows.reduce((s, u) => s + (u.output || 0), 0))}</td><td>${hasCost ? "$" + cost.toFixed(2) : "-"}</td><td>${Math.round(rows.reduce((s, u) => s + (u.seconds || 0), 0))}초</td><td></td></tr>
   </table>` : `<p class="meta">AI 작업이 끝나면 여기 쌓입니다(최근 10개).</p>`;
 }
 function update(el, row) {
@@ -758,7 +727,7 @@ function update(el, row) {
   const qs = el.querySelector(".qstate");
   const jobs = row.jobs || [];
   if (jobs.length) { qs.className = "qstate running";
-    qs.textContent = "● 처리 중 — " + jobs.map(j => `${j.note_ids.join(", ")} (${AI_OF[j.note_kind] || ""}) · ${j.step}`).join("  ‖  ")
+    qs.textContent = "● 처리 중 — " + jobs.map(j => `${j.note_ids.join(", ")} (${aiName()}) · ${j.step}`).join("  ‖  ")
       + (row.pause_after ? " · ⏸ 이번 작업이 끝나면 멈춥니다" : ""); }
   else if (row.paused) { qs.className = "qstate paused"; qs.textContent = `■ 멈춤 — 대기 ${queued}개. [다시 시작]을 누르면 이어서 처리합니다`; }
   else { qs.className = "qstate idle"; qs.textContent = queued ? `대기 ${queued}개 — 곧 시작합니다` : "쉬는 중 — 메모를 적으면 바로 처리합니다"; }
@@ -771,7 +740,7 @@ function update(el, row) {
   const shownJobs = jobs.length ? jobs : (row.job ? [row.job] : []);
   const shownIds = new Set(shownJobs.map(j => j.id));
   const hist = row.history.filter(h => !shownIds.has(h.id));
-  const label = j => `${NOTE_KIND[j.note_kind] || "작업"} ${(j.note_ids || []).join(", ")}`;
+  const label = j => `메모 ${(j.note_ids || []).join(", ")}`;
   jobBox.innerHTML = shownJobs.map(j => {
     const live = j.state === "running";
     return `<div class="job-line"><b>${esc(label(j))}</b><span class="js-${esc(j.state)}">${JOB[j.state]}${live && j.step ? ` — ${esc(j.step)}` : ""}</span>
@@ -851,7 +820,7 @@ document.addEventListener("keydown", e => { if (e.key === "Escape" && !reader.cl
 // 이 탭에서 한 번 [시작하기]를 눌렀으면 새로고침에는 다시 띄우지 않는다(준비가 깨지면 다시 띄운다)
 const setupModal = document.getElementById("setup-modal");
 const setupBox = document.getElementById("setup");
-let setupData = null, setupMsg = "", setupMsgKind = "", setupBusy = false;
+let setupData = null, setupMsg = "", setupMsgKind = "", setupBusy = false, setupChoosing = false, setupLoginOpened = false;
 const confirmedThisTab = () => { try { return sessionStorage.getItem("memodesk-setup-ok") === "1"; } catch { return false; } };
 async function loadSetup(force = false) {
   try { setupData = await (await fetch("/api/setup" + (force ? "?force=1" : ""))).json(); } catch { return; }
@@ -867,17 +836,27 @@ function renderSetup() {
   if (!d) return;
   setupBox.classList.toggle("ready", d.ready);
   const now = d.items.find(i => i.required && !i.ok);
-  const ACTION = { install_claude: "설치하기", login_claude: "로그인하기", install_git: "설치하기" };
+  const ACTION = { install_cli: "설치하기", login: "로그인하기", install_git: "설치하기", install_node: "설치하기", choose: "고르기" };
+  // 쓸 AI 고르기 — 아직 안 골랐거나 [다른 AI 로 바꾸기]를 눌렀으면 카드를 펼친다
+  const cards = (d.providers || []).map(c => `<div class="aicard${c.chosen ? " on" : ""}">
+      <div><span class="nm">${esc(c.name)}</span><span class="co">${esc(c.company)}</span></div>
+      <div class="pitch">${esc(c.pitch)}</div><div class="plan">${esc(c.plan)}</div>
+      ${c.installed ? `<span class="badge">✔ 이 PC 에 설치되어 있음</span>` : ""}
+      <button class="${c.chosen ? "" : "primary"}" data-setup="choose" data-value="${esc(c.id)}"${c.chosen ? " disabled" : ""}>${c.chosen ? "지금 쓰는 AI" : "이 AI 쓰기"}</button></div>`).join("");
+  const showCards = !d.ai || setupChoosing;
   setupBox.innerHTML = `<h2 id="setup-title">${d.ready ? "✔ 준비가 끝났습니다" : "MemoDesk 를 쓰기 전에 준비가 필요합니다"}</h2>
     <p class="lead">${d.ready ? "이제 메모를 적으면 AI 가 처리합니다." + (d.items.some(i => !i.required && !i.ok) ? " 아래 권장 항목은 나중에 해도 됩니다." : "")
+      : !d.ai ? "먼저 메모를 처리할 <b>AI 를 하나 고르세요</b>. 그다음 파란 버튼을 차례로 누르면 설치 · 로그인이 진행됩니다."
       : "위에서부터 차례로 <b>파란 버튼</b>을 누르세요. 새 창이 열려 설치 · 로그인이 진행되고, 끝나면 여기가 저절로 ✔ 로 바뀝니다."}</p>
     <ol>${d.items.map((it, i) => `<li class="${it.ok ? "ok" : it.required ? "no" : "opt"}${it === now ? " now" : ""}">
       <span class="mark">${it.ok ? "✔" : it.required ? "✘" : "!"}</span>
       <div class="what"><b>${i + 1}. ${esc(it.name)}</b><span class="tag">${it.required ? "꼭 필요" : "있으면 좋음"}</span>
         ${it === now ? `<div class="now-tag">← 지금 할 일</div>` : ""}
         <div class="detail">${esc(it.detail)}</div>${!it.ok && it.help ? `<div class="help">${esc(it.help)}</div>` : ""}</div>
-      <div class="acts">${it.action ? `<button class="${it === now || !it.required ? "primary big" : "big"}" data-setup="${esc(it.action)}"${setupBusy ? " disabled" : ""}>${ACTION[it.action] || "실행"}</button>` : ""}
-        ${it.action === "login_claude" ? `<button class="alt" data-setup="login_console" title="회사에서 받은 Anthropic Console(API) 계정을 쓰는 경우">회사 API 계정이면 여기</button>` : ""}</div></li>`).join("")}</ol>
+      <div class="acts">${it.id === "ai" ? (d.ai ? `<button data-setup="toggle_cards">${setupChoosing ? "접기" : "다른 AI 로 바꾸기"}</button>` : "")
+          : it.action ? `<button class="${it === now || !it.required ? "primary big" : "big"}" data-setup="${esc(it.action)}"${setupBusy ? " disabled" : ""}>${ACTION[it.action] || "실행"}</button>` : ""}
+        ${it.action2 ? `<button class="${it.action2 && setupLoginOpened ? "primary" : ""}" data-setup="${esc(it.action2)}"${setupBusy ? " disabled" : ""} title="AI 를 한 번 불러 로그인이 됐는지 확인합니다">로그인 확인</button>` : ""}</div>
+      ${it.id === "ai" && showCards ? `<div class="cards" style="grid-column: 1 / -1">${cards}</div>` : ""}</li>`).join("")}</ol>
     <div class="msg ${setupMsgKind}">${esc(setupMsg)}</div>
     <div class="bar"><button data-setup="recheck"${setupBusy ? " disabled" : ""}>다시 확인</button>
       ${d.ready ? `<button data-setup="try_call" title="AI 를 한 번 불러 실제로 답하는지 봅니다(비용 약 10원)"${setupBusy ? " disabled" : ""}>AI 한 번 불러 보기</button>` : ""}
@@ -894,16 +873,29 @@ setupBox.addEventListener("click", async e => {
     setupModal.classList.add("hidden");
     return;
   }
+  if (act === "toggle_cards") { setupChoosing = !setupChoosing; renderSetup(); return; }
+  if (act === "choose") {
+    setupBusy = true; say("고르는 중…");
+    const { res, data } = await postJson("/api/setup/run", { action: "choose", value: b.dataset.value });
+    setupBusy = false; setupChoosing = false; setupLoginOpened = false;
+    if (!res.ok) { say(data.error || "고르지 못했습니다", "bad"); return; }
+    await loadSetup(true); say("골랐습니다 — 아래 파란 버튼을 차례로 누르세요"); refresh(); return;
+  }
   if (act === "recheck") { say("확인하는 중…"); await loadSetup(true); say(setupData.ready ? "준비가 끝났습니다" : "아직 준비가 덜 됐습니다 — 표시된 버튼을 누르세요", setupData.ready ? "ok" : ""); return; }
   setupBusy = true;
   say(act === "try_call" ? "AI 를 불러 보는 중… (몇 초 ~ 몇십 초)" : "창을 여는 중…");
   const { res, data } = await postJson("/api/setup/run", { action: act });
   setupBusy = false;
+  if (act === "login") setupLoginOpened = true;
   if (!res.ok) say(data.error || "실패했습니다", "bad");
   else if (data.manual) say(`터미널에서 직접 실행하세요: ${data.manual}`);
-  else if (act === "try_call") say(data.ok ? `✔ ${data.detail}` : `✘ AI 가 답하지 않았습니다 — ${data.detail}`, data.ok ? "ok" : "bad");
-  else say(act.startsWith("login") ? "로그인 창이 열렸습니다. 브라우저에서 로그인을 마치면 여기가 저절로 ✔ 로 바뀝니다."
-                                  : "설치 창이 열렸습니다. 설치가 끝나면 여기가 저절로 ✔ 로 바뀝니다(1~3분).");
+  else if (act === "try_call" || act === "verify_login") {
+    say(data.ok ? `✔ ${data.detail}` : `✘ AI 가 답하지 않았습니다 — ${data.detail}`, data.ok ? "ok" : "bad");
+    if (act === "verify_login") loadSetup(true);
+  }
+  else say(act === "login" ? (setupData.items.find(i => i.id === "login")?.action2 ? "로그인 창이 열렸습니다. 로그인을 마치면 [로그인 확인]을 누르세요."
+                                                                                     : "로그인 창이 열렸습니다. 브라우저에서 로그인을 마치면 여기가 저절로 ✔ 로 바뀝니다.")
+                           : "설치 창이 열렸습니다. 설치가 끝나면 여기가 저절로 ✔ 로 바뀝니다(1~3분).");
 });
 // 준비가 안 된 동안은 몇 초마다 다시 본다 — 새 창에서 설치 · 로그인이 끝나면 사람이 누르지 않아도 ✔ 가 된다
 setInterval(() => { if (setupData && !setupData.ready && !setupModal.classList.contains("hidden")) loadSetup(true); }, 5000);

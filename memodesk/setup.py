@@ -1,18 +1,20 @@
-"""처음 쓰기 전에 갖출 것 — 점검과 설치 · 로그인 버튼.
+"""처음 쓰기 전에 갖출 것 — **쓸 AI 고르기** → (Gemini 면 Node.js) → AI 프로그램 설치 → 계정 로그인. 점검과 버튼.
+
+2026-10-14 사용자 요청 — "AI 는 많잖아? 목록을 주고 어떤 AI 를 쓸지 고르고, 로그인하고, CLI 설치까지".
+AI 마다 다른 것(설치 명령 · 계정 · 로그인 확인 방법)은 providers.py 에 있다.
 
 | 항목 | 필요 | 확인 | 버튼 |
 |---|---|---|---|
-| 파이썬 3.10+ | 필수 | 지금 도는 서버 | — (없으면 서버가 안 켜진다 — `Setup.bat` 이 먼저 깐다) |
-| Claude Code CLI | 필수 | `claude --version` | 공식 설치 명령(`irm https://claude.ai/install.ps1 \\| iex`) 창 |
-| 클로드 로그인 | 필수 | `claude auth status`(JSON, 비용 없음) | `claude auth login` 창 |
-| Git for Windows | 권장 | `git --version` | `winget install Git.Git` 창 |
+| 기본 실행 환경(Python) | 꼭 | 지금 도는 서버 | — (없으면 서버가 안 켜진다 — `Setup.bat` 이 먼저 깐다) |
+| 쓸 AI 고르기 | 꼭 | config.json 의 `ai` | AI 카드 |
+| Node.js | 꼭(Gemini 만) | `node` | winget · 없으면 nodejs.org 공식 설치 파일 |
+| AI 프로그램 | 꼭 | `<cli> --version` | 공식 설치 명령 창 |
+| AI 계정 로그인 | 꼭 | Claude `auth status` · Codex `login status` · Gemini 는 확인 명령이 없어 한 번 불러 본다 | 로그인 창 |
+| 보조 도구(Git) | 있으면 좋음(Claude 만) | `git` | winget · 없으면 GitHub 공식 설치 파일 |
 
-- Claude Code 는 Pro · Max · Team · Enterprise · Console 계정이 있어야 한다(무료 플랜은 안 된다 — 공식 문서).
-- Git for Windows 가 없으면 클로드가 Bash 대신 PowerShell 로 명령을 돌린다. MemoDesk 는 `Bash(mv:*)` 등만 허락하므로
-  "지울 파일은 보관 폴더로 옮기기" 가 막힐 수 있다 — 그래서 권장.
 - 설치 · 로그인은 **보이는 새 창**에서 돈다(사람이 진행 상황과 브라우저 로그인을 본다). 버튼이 부르는 명령은 여기 고정된 것뿐이다.
-- 설치 직후에는 이 서버의 PATH 에 새 프로그램이 없다. 그래서 claude 는 PATH 말고 기본 설치 자리도 찾는다.
-- `claude auth status` 는 로컬 기록만 본다. 실제로 불러지는지는 [실제로 불러 보기](Haiku 로 한 번, 비용 약 $0.01)로 확인한다.
+- 설치 직후에는 이 서버의 PATH 에 새 프로그램이 없다 — 기본 설치 자리도 찾고(`providers.find_cli`), 프로그램을 부를 때는
+  그 자리들을 PATH 앞에 붙인다(`tool_env`). Gemini 의 npm 실행 파일은 node 를 PATH 에서 찾는다.
 """
 
 from __future__ import annotations
@@ -25,36 +27,41 @@ import subprocess
 import sys
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
 
+from memodesk import config, providers
+from memodesk.notes import KST
+
 IS_WINDOWS = os.name == "nt"
-CLAUDE_INSTALL_PS = "irm https://claude.ai/install.ps1 | iex"
-CLAUDE_INSTALL_SH = "curl -fsSL https://claude.ai/install.sh | bash"
 CACHE_SECONDS = 60
 
 _cache: dict = {"at": 0.0, "data": None}
 _lock = threading.Lock()
 
 
+def tool_env() -> dict:
+    """AI 프로그램 · node · git 을 부를 환경. 설치 직후에도 찾게 기본 설치 자리를 PATH 앞에 붙인다."""
+    extra = [Path.home() / ".local" / "bin"]
+    if IS_WINDOWS:
+        if os.environ.get("APPDATA"):
+            extra.append(Path(os.environ["APPDATA"]) / "npm")
+        extra.append(Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "nodejs")
+        extra.append(Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "Git" / "cmd")
+    node = providers.find_node()
+    if node:
+        extra.insert(0, Path(node).parent)
+    path = os.pathsep.join([str(p) for p in extra if p.is_dir()] + [os.environ.get("PATH", "")])
+    return {**os.environ, "PATH": path}
+
+
 def _run(cmd: list[str], timeout: int = 30) -> tuple[int, str]:
     try:
         out = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout,
-                             creationflags=subprocess.CREATE_NO_WINDOW if IS_WINDOWS else 0)
+                             env=tool_env(), creationflags=subprocess.CREATE_NO_WINDOW if IS_WINDOWS else 0)
     except (OSError, subprocess.TimeoutExpired) as exc:
         return -1, str(exc)
     return out.returncode, (out.stdout or "") + (out.stderr or "")
-
-
-def find_claude() -> str | None:
-    """claude 실행 파일. PATH 에 없으면 공식 설치 자리(~/.local/bin)와 npm 전역 자리를 본다(설치 직후 대비)."""
-    found = shutil.which("claude")
-    if found:
-        return found
-    home = Path.home()
-    candidates = [home / ".local" / "bin" / ("claude.exe" if IS_WINDOWS else "claude")]
-    if IS_WINDOWS and os.environ.get("APPDATA"):
-        candidates.append(Path(os.environ["APPDATA"]) / "npm" / "claude.cmd")
-    return next((str(p) for p in candidates if p.is_file()), None)
 
 
 def find_git() -> str | None:
@@ -69,60 +76,111 @@ def find_git() -> str | None:
     return None
 
 
-def _claude_login(claude: str) -> dict:
-    code, text = _run([claude, "auth", "status"], timeout=30)
-    try:
-        data = json.loads(text[text.index("{"):]) if "{" in text else {}
-    except ValueError:
-        data = {}
-    if data.get("loggedIn"):
-        who = data.get("email") or data.get("orgName") or ""
-        plan = data.get("subscriptionType") or data.get("authMethod") or ""
-        return {"ok": True, "detail": " · ".join(x for x in (who, plan) if x) or "로그인됨"}
-    if data:
-        return {"ok": False, "detail": "로그인되어 있지 않습니다"}
-    return {"ok": False, "detail": f"로그인 상태를 읽지 못했습니다(종료 코드 {code}): {text.strip()[:120]}"}
+def chosen() -> str:
+    ai = config.load().get("ai") or ""
+    return ai if ai in providers.PROVIDERS else ""
+
+
+def choose(pid: str) -> None:
+    providers.get(pid)
+    config.update(ai=pid)
+    with _lock:
+        _cache["data"] = None
+
+
+# ── 로그인 확인 — AI 마다 다르다 ──────────────────────────────────────────────
+
+def _login_status(pid: str, cli: str) -> dict:
+    kind = providers.get(pid)["status"]
+    if kind == "claude_auth":
+        code, text = _run([cli, "auth", "status"], timeout=30)
+        try:
+            data = json.loads(text[text.index("{"):]) if "{" in text else {}
+        except ValueError:
+            data = {}
+        if data.get("loggedIn"):
+            who = data.get("email") or data.get("orgName") or ""
+            plan = data.get("subscriptionType") or data.get("authMethod") or ""
+            return {"ok": True, "detail": " · ".join(x for x in (who, plan) if x) or "로그인됨"}
+        return {"ok": False, "detail": "로그인되어 있지 않습니다" if data else f"로그인 상태를 읽지 못했습니다: {text.strip()[:120]}"}
+    if kind == "codex_login":
+        code, text = _run([cli, "login", "status"], timeout=30)
+        line = next((l.strip() for l in text.splitlines() if l.strip()), "")
+        ok = code == 0 and "logged in" in text.lower() and "not logged in" not in text.lower()
+        return {"ok": ok, "detail": line or ("로그인됨" if ok else "로그인되어 있지 않습니다")}
+    # real_call — 확인 명령이 없다. 마지막으로 실제 호출이 된 시각을 기억해 둔다
+    verified = (config.load().get("verified") or {}).get(pid)
+    if verified:
+        return {"ok": True, "detail": f"확인됨 · {verified[:16].replace('T', ' ')}"}
+    return {"ok": False, "detail": "로그인한 뒤 [로그인 확인]을 누르세요(한 번 실제로 불러 봅니다)"}
 
 
 def check(force: bool = False) -> dict:
-    """점검 결과. 몇 초 걸리므로 CACHE_SECONDS 동안 다시 쓴다(화면은 자주 묻는다).
-    이름 · 설명은 개발자가 아닌 사람도 읽게 쉬운 말로 쓴다(2026-10-14 사용자 요청)."""
+    """점검 결과. 몇 초 걸리므로 CACHE_SECONDS 동안 다시 쓴다. 이름 · 설명은 개발자가 아닌 사람도 읽게 쉬운 말로."""
     with _lock:
         if not force and _cache["data"] and time.monotonic() - _cache["at"] < CACHE_SECONDS:
             return _cache["data"]
+    ai = chosen()
     items = []
     version = ".".join(map(str, sys.version_info[:3]))
     items.append({"id": "python", "name": "기본 실행 환경 (Python)", "required": True, "ok": sys.version_info >= (3, 10),
-                  "detail": f"Python {version}", "action": "",
-                  "help": "MemoDesk 를 돌리는 프로그램입니다. 이 화면이 보이면 이미 준비된 것입니다."})
-    claude = find_claude()
-    if claude:
-        code, text = _run([claude, "--version"], timeout=30)
-        cli = {"ok": code == 0, "detail": f"설치됨 · {text.strip().splitlines()[0]}" if code == 0 and text.strip()
-               else f"설치는 되어 있지만 실행이 안 됩니다: {text.strip()[:120]}"}
-    else:
-        cli = {"ok": False, "detail": "아직 설치되지 않았습니다"}
-    items.append({"id": "claude_cli", "name": "AI 프로그램 (Claude Code)", "required": True, **cli,
-                  "action": "" if cli["ok"] else "install_claude",
-                  "help": "메모를 읽고 파일을 고치는 AI 입니다. [설치하기]를 누르면 새 창이 열리고 1~2분 안에 설치됩니다. "
-                          "관리자 권한은 필요 없습니다."})
-    login = _claude_login(claude) if cli["ok"] else {"ok": False, "detail": "AI 프로그램을 먼저 설치하세요"}
-    items.append({"id": "claude_login", "name": "AI 계정 로그인 (Claude)", "required": True, **login,
-                  "action": "" if login["ok"] or not cli["ok"] else "login_claude",
-                  "help": "유료 Claude 계정(Pro · Max · Team · Enterprise)이 필요합니다. 무료 계정은 쓸 수 없습니다. "
-                          "[로그인하기]를 누르면 브라우저가 열립니다 — 평소 쓰는 Claude 계정으로 로그인하고 '허용'을 누르세요."})
-    git = find_git()
-    items.append({"id": "git", "name": "보조 도구 (Git)", "required": False, "ok": bool(git),
-                  "detail": "설치됨" if git else "아직 설치되지 않았습니다",
-                  "action": "" if git or not IS_WINDOWS else "install_git",
-                  "help": "있으면 AI 가 더 안정적으로 일합니다(파일 옮기기 등). 없어도 쓸 수는 있습니다. "
-                          "[설치하기]를 누르면 설치 프로그램이 열립니다 — 관리자 확인 창이 뜨면 '예'를 누르세요."})
-    data = {"ready": all(i["ok"] for i in items if i["required"]), "items": items, "claude": claude or "",
+                  "detail": f"Python {version}", "action": "", "help": ""})
+    info = providers.PROVIDERS.get(ai)
+    items.append({"id": "ai", "name": "쓸 AI 고르기", "required": True, "ok": bool(info),
+                  "detail": f"{info['name']} ({info['company']})" if info else "아직 고르지 않았습니다",
+                  "action": "choose", "help": "메모를 처리할 AI 를 고릅니다. 나중에 바꿀 수 있습니다."})
+    if info:
+        if info["needs_node"]:
+            node = providers.find_node()
+            node_ok = False
+            if node:
+                code, text = _run([node, "--version"], timeout=20)
+                try:
+                    node_ok = code == 0 and int(text.strip().lstrip("v").split(".")[0]) >= 20
+                except ValueError:
+                    node_ok = False
+                node_detail = f"설치됨 · {text.strip()}" + ("" if node_ok else " — 20 이상이 필요합니다")
+            else:
+                node_detail = "아직 설치되지 않았습니다"
+            items.append({"id": "node", "name": "Node.js (Gemini 에 필요)", "required": True, "ok": node_ok, "detail": node_detail,
+                          "action": "" if node_ok else "install_node",
+                          "help": f"{info['cli_name']} 를 설치하는 데 필요한 프로그램입니다. 설치 중 관리자 확인 창이 뜨면 '예'를 누르세요."})
+        cli = providers.find_cli(ai)
+        if cli:
+            code, text = _run([cli, "--version"], timeout=30)
+            first = text.strip().splitlines()[0] if text.strip() else ""
+            cli_state = {"ok": code == 0, "detail": f"설치됨 · {first}" if code == 0 else f"설치는 되어 있지만 실행이 안 됩니다: {text.strip()[:120]}"}
+        else:
+            cli_state = {"ok": False, "detail": "아직 설치되지 않았습니다"}
+        blocked = info["needs_node"] and not items[-1]["ok"]
+        items.append({"id": "cli", "name": f"AI 프로그램 ({info['cli_name']})", "required": True, **cli_state,
+                      "action": "" if cli_state["ok"] or blocked else "install_cli",
+                      "help": "Node.js 를 먼저 설치하세요." if blocked else
+                              "메모를 읽고 일하는 AI 프로그램입니다. [설치하기]를 누르면 새 창에서 설치됩니다(1~3분)."})
+        login = _login_status(ai, cli) if cli_state["ok"] else {"ok": False, "detail": "AI 프로그램을 먼저 설치하세요"}
+        real_call = info["status"] == "real_call"
+        items.append({"id": "login", "name": f"AI 계정 로그인 ({info['name']})", "required": True, **login,
+                      "action": "" if login["ok"] or not cli_state["ok"] else "login",
+                      "action2": "verify_login" if real_call and cli_state["ok"] and not login["ok"] else "",
+                      "help": info["plan"] + " [로그인하기]를 누르면 새 창이 열립니다 — " + info["login_hint"]})
+        if ai == "claude":
+            git = find_git()
+            items.append({"id": "git", "name": "보조 도구 (Git)", "required": False, "ok": bool(git),
+                          "detail": "설치됨" if git else "아직 설치되지 않았습니다",
+                          "action": "" if git or not IS_WINDOWS else "install_git",
+                          "help": "있으면 AI 가 더 안정적으로 일합니다(파일 옮기기 등). 없어도 쓸 수는 있습니다. "
+                                  "설치 중 관리자 확인 창이 뜨면 '예'를 누르세요."})
+    cards = [{"id": pid, "name": p["name"], "company": p["company"], "plan": p["plan"], "pitch": p["pitch"],
+              "installed": bool(providers.find_cli(pid)), "chosen": pid == ai} for pid, p in
+             ((pid, providers.PROVIDERS[pid]) for pid in providers.ORDER)]
+    data = {"ready": all(i["ok"] for i in items if i["required"]), "items": items, "ai": ai, "providers": cards,
             "winget": bool(shutil.which("winget")), "windows": IS_WINDOWS}
     with _lock:
         _cache.update(at=time.monotonic(), data=data)
     return data
 
+
+# ── 버튼 ─────────────────────────────────────────────────────────────────────
 
 def _ps_quote(text: str) -> str:
     """PowerShell 작은따옴표 문자열 안에 넣을 수 있게."""
@@ -140,7 +198,7 @@ def _console(title: str, intro: str, script: str) -> None:
             "catch { Write-Host ''; Write-Host ('문제가 생겼습니다: ' + $_.Exception.Message) -ForegroundColor Red; "
             "Write-Host '이 창의 내용을 캡처해 담당자에게 보내 주세요.' -ForegroundColor Yellow }")
     subprocess.Popen(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-NoExit", "-Command", full],
-                     creationflags=subprocess.CREATE_NEW_CONSOLE)
+                     env=tool_env(), creationflags=subprocess.CREATE_NEW_CONSOLE)
 
 
 # Git for Windows — winget 이 있으면 그것으로, 없으면(회사 PC · 옛 Windows 에 흔하다 — 실측: 이 작업 PC 에도 없었다)
@@ -156,45 +214,85 @@ GIT_FROM_GITHUB = (
     "if ($p.ExitCode -ne 0) { throw ('설치 프로그램이 오류 코드 ' + $p.ExitCode + ' 로 끝났습니다') }"
 )
 GIT_FROM_WINGET = "winget install -e --id Git.Git --accept-source-agreements --accept-package-agreements"
+# Node.js LTS — winget 이 없으면 nodejs.org 의 배포 목록에서 최신 LTS 의 64비트 MSI 를 받아 실행한다(관리자 확인 창이 뜰 수 있다)
+NODE_FROM_NODEJS_ORG = (
+    "$all = Invoke-RestMethod 'https://nodejs.org/dist/index.json'; "
+    "$lts = $all | Where-Object { $_.lts -and ($_.files -contains 'win-x64-msi') } | Select-Object -First 1; "
+    "if (-not $lts) { throw 'Node.js 설치 파일을 찾지 못했습니다 — https://nodejs.org 에서 LTS 를 직접 받아 주세요' }; "
+    "$name = 'node-' + $lts.version + '-x64.msi'; $file = Join-Path $env:TEMP $name; "
+    "Write-Host ('내려받는 중: ' + $name + ' ...'); "
+    "Invoke-WebRequest ('https://nodejs.org/dist/' + $lts.version + '/' + $name) -OutFile $file -UseBasicParsing; "
+    "Write-Host '설치 중 ... (관리자 확인 창이 뜨면 예)'; "
+    "$p = Start-Process msiexec.exe -ArgumentList '/i', ('\"' + $file + '\"'), '/passive', '/norestart' -Wait -PassThru; "
+    "if ($p.ExitCode -ne 0 -and $p.ExitCode -ne 3010) { throw ('설치 프로그램이 오류 코드 ' + $p.ExitCode + ' 로 끝났습니다') }"
+)
+NODE_FROM_WINGET = "winget install -e --id OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements"
+# npm 은 설치 직후 PATH 에 없을 수 있다 — 기본 자리를 직접 찾는다
+NPM_FIND = ("$npm = (Get-Command npm -ErrorAction SilentlyContinue).Source; "
+            "if (-not $npm) { $npm = Join-Path $env:ProgramFiles 'nodejs\\npm.cmd' }; "
+            "if (-not (Test-Path $npm)) { throw 'npm 을 찾지 못했습니다 — Node.js 를 먼저 설치하세요' }; ")
 
 
-def run_action(action: str) -> dict:
+def run_action(action: str, value: str = "") -> dict:
     """버튼 — 고정된 명령만 돈다. Windows 가 아니면 손으로 칠 명령을 돌려준다."""
     with _lock:
         _cache["data"] = None   # 끝난 뒤 새로 재게
-    claude = find_claude() or "claude"
-    if action == "install_claude":
+    if action == "choose":
+        choose(value)
+        return {"chosen": value}
+    if action in ("install_git", "install_node"):
         if not IS_WINDOWS:
-            return {"manual": CLAUDE_INSTALL_SH}
-        _console("Claude Code 설치", "AI 프로그램(Claude Code)을 설치합니다. 1~2분 걸립니다. 끝날 때까지 이 창을 닫지 마세요.",
-                 CLAUDE_INSTALL_PS)
+            return {"manual": "OS 의 패키지 관리자로 설치하세요"}
+        has_winget = bool(shutil.which("winget"))
+        if action == "install_git":
+            _console("Git 설치", "보조 도구(Git)를 설치합니다. 몇 분 걸릴 수 있습니다. 끝날 때까지 이 창을 닫지 마세요.",
+                     GIT_FROM_WINGET if has_winget else GIT_FROM_GITHUB)
+        else:
+            _console("Node.js 설치", "Node.js 를 설치합니다. 몇 분 걸릴 수 있습니다. 끝날 때까지 이 창을 닫지 마세요.",
+                     NODE_FROM_WINGET if has_winget else NODE_FROM_NODEJS_ORG)
         return {"opened": True}
-    if action in ("login_claude", "login_console"):
-        how = "--console" if action == "login_console" else "--claudeai"
+    ai = chosen()
+    if not ai:
+        raise ValueError("먼저 쓸 AI 를 고르세요")
+    info = providers.get(ai)
+    cli = providers.find_cli(ai) or info["cli"]
+    if action == "install_cli":
         if not IS_WINDOWS:
-            return {"manual": f"claude auth login {how}"}
-        _console("Claude 로그인", "브라우저가 열리면 Claude 계정으로 로그인하고 '허용'을 누르세요. 끝나면 이 창에 성공 메시지가 나옵니다.",
-                 f"& '{_ps_quote(claude)}' auth login {how}")
+            return {"manual": info["install_sh"]}
+        script = (NPM_FIND + "& $npm install -g @google/gemini-cli") if ai == "gemini" else info["install_ps"]
+        _console(f"{info['cli_name']} 설치", f"AI 프로그램({info['cli_name']})을 설치합니다. 1~3분 걸립니다. 끝날 때까지 이 창을 닫지 마세요.", script)
         return {"opened": True}
-    if action == "install_git":
+    if action == "login":
         if not IS_WINDOWS:
-            return {"manual": "OS 의 패키지 관리자로 git 을 설치하세요"}
-        _console("Git 설치", "보조 도구(Git)를 설치합니다. 몇 분 걸릴 수 있습니다. 끝날 때까지 이 창을 닫지 마세요.",
-                 GIT_FROM_WINGET if shutil.which("winget") else GIT_FROM_GITHUB)
+            return {"manual": " ".join([info["cli"], *info["login_args"]])}
+        args = " ".join(info["login_args"])
+        _console(f"{info['name']} 로그인", info["login_hint"], f"& '{_ps_quote(cli)}' {args}".strip())
         return {"opened": True}
-    if action == "try_call":
-        found = find_claude()
+    if action in ("try_call", "verify_login"):
+        found = providers.find_cli(ai)
         if not found:
-            raise ValueError("AI 프로그램(Claude Code)이 없습니다")
-        code, text = _run([found, "-p", "ok 라고만 답해", "--model", "haiku", "--output-format", "json"], timeout=180)
-        try:
-            data = json.loads(text[text.index("{"):]) if "{" in text else {}
-        except ValueError:
-            data = {}
-        if code == 0 and not data.get("is_error"):
-            return {"ok": True, "detail": "AI 가 정상으로 답했습니다"}
-        return {"ok": False, "detail": (str(data.get("result") or text).strip())[:300]}
+            raise ValueError(f"AI 프로그램({info['cli_name']})이 없습니다")
+        ok, detail = _ping(ai, found)
+        if ok and info["status"] == "real_call":
+            verified = dict(config.load().get("verified") or {})
+            verified[ai] = datetime.now(KST).isoformat(timespec="seconds")
+            config.update(verified=verified)
+        return {"ok": ok, "detail": detail}
     raise ValueError(f"모르는 동작: {action}")
+
+
+def _ping(ai: str, cli: str) -> tuple[bool, str]:
+    """AI 를 한 번 짧게 불러 실제로 답하는지 본다(가장 싼 방법으로)."""
+    if ai == "claude":
+        cmd = [cli, "-p", "ok 라고만 답해", "--model", "haiku", "--output-format", "json"]
+    elif ai == "codex":
+        cmd = [cli, "exec", "--skip-git-repo-check", "--ephemeral", "--sandbox", "read-only", "ok 라고만 답해"]
+    else:
+        cmd = [cli, "-p", "ok 라고만 답해", "--output-format", "json"]
+    code, text = _run(cmd, timeout=180)
+    if code == 0:
+        return True, "AI 가 정상으로 답했습니다"
+    return False, text.strip()[-300:] or f"종료 코드 {code}"
 
 
 def pick_folder(title: str = "AI 가 고칠 폴더를 고르세요") -> str:

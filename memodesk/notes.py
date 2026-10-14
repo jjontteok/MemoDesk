@@ -33,7 +33,7 @@ KINDS = ("code", "human")
 HUMAN_KINDS = ("human",)
 KIND_NAMES = {"code": "코드", "human": "사람"}
 # 작업 줄 — 줄마다 한 번에 한 작업. 2차에 코덱스 줄(그림 · 검증)이 더해진다
-LANE = {"code": "claude"}
+LANE = {"code": "ai"}   # 메모는 고른 AI 하나가 처리한다(종류 구분 없음 — 2026-10-14 사용자 요청 "그냥 메모야")
 BARRIERS: tuple[str, ...] = ()   # 칸막이 종류(위가 다 끝나야 돌고 아래는 이것을 기다린다) — 2차의 검증 · 빌드 지점
 
 ATTACH_DIR = "attachments"   # data/projects/{id}/attachments/{메모 번호}/ — 메모에 붙여 넣은 그림

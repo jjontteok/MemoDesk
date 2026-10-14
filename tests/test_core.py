@@ -20,7 +20,7 @@ _TMP = tempfile.TemporaryDirectory()
 os.environ["MEMODESK_DATA"] = _TMP.name
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from memodesk import config, failures, notes, projects, runner, server, setup  # noqa: E402
+from memodesk import config, failures, notes, projects, providers, runner, server, setup  # noqa: E402
 
 
 def reset_data() -> None:
@@ -57,8 +57,8 @@ class NotesTests(unittest.TestCase):
         b = notes.add(self.dir, "b")
         notes.add(self.dir, "사람", "human")
         groups = notes.runnable_groups(notes.load(self.dir))
-        self.assertEqual([(lane, [n["id"] for n in g]) for lane, g in groups], [("claude", [a["id"], b["id"]])])
-        self.assertEqual(notes.runnable_groups(notes.load(self.dir), {"claude"}), [])
+        self.assertEqual([(lane, [n["id"] for n in g]) for lane, g in groups], [("ai", [a["id"], b["id"]])])
+        self.assertEqual(notes.runnable_groups(notes.load(self.dir), {"ai"}), [])
 
     def test_refine_keeps_previous_result_for_prompt(self) -> None:
         a = notes.add(self.dir, "버튼 글자 바꾸기")
@@ -118,7 +118,7 @@ class BackupTests(unittest.TestCase):
     def test_restore_only_this_jobs_changes_and_shelve_new_files(self) -> None:
         pid = self.project["id"]
         runner.backup_project(pid, "20260101-000000", "code")
-        marker = runner.active_marker(pid, "claude")
+        marker = runner.active_marker(pid, "ai")
         self.assertNotIn("node_modules/x/big.js", json.loads(marker.read_text(encoding="utf-8"))["files"])
         (self.work / "src" / "a.txt").write_text("AI 가 바꿈", encoding="utf-8")
         (self.work / "new.txt").write_text("새 파일", encoding="utf-8")
@@ -141,7 +141,7 @@ class BackupTests(unittest.TestCase):
                 runner.backup_project(self.project["id"], "20260101-000001", "code")
         finally:
             runner.BACKUP_MAX_BYTES = old
-        self.assertFalse(runner.active_marker(self.project["id"], "claude").exists())
+        self.assertFalse(runner.active_marker(self.project["id"], "ai").exists())
 
     def test_path_rule_excludes_only_that_subtree(self) -> None:
         files = runner.project_files(self.work, ["src"])
@@ -159,32 +159,49 @@ class FailureTests(unittest.TestCase):
 
 
 class SetupTests(unittest.TestCase):
-    def test_check_shape_and_required_items(self) -> None:
+    def setUp(self) -> None:
+        reset_data()
+
+    def test_must_choose_ai_first(self) -> None:
         data = setup.check(force=True)
-        ids = [i["id"] for i in data["items"]]
-        self.assertEqual(ids, ["python", "claude_cli", "claude_login", "git"])
-        self.assertEqual([i["required"] for i in data["items"]], [True, True, True, False])
-        self.assertEqual(data["ready"], all(i["ok"] for i in data["items"] if i["required"]))
-        self.assertTrue(data["items"][0]["ok"])                             # 이 시험을 돌리는 파이썬
+        self.assertEqual([i["id"] for i in data["items"]], ["python", "ai"])       # 고르기 전에는 두 줄뿐
+        self.assertFalse(data["ready"])
+        self.assertEqual([c["id"] for c in data["providers"]], ["claude", "codex", "gemini"])
+        with self.assertRaises(ValueError):
+            setup.run_action("install_cli")                                     # 고르기 전엔 설치할 AI 가 없다
+
+    def test_steps_per_ai(self) -> None:
+        setup.run_action("choose", "claude")
+        self.assertEqual([i["id"] for i in setup.check(force=True)["items"]], ["python", "ai", "cli", "login", "git"])
+        setup.run_action("choose", "codex")
+        self.assertEqual([i["id"] for i in setup.check(force=True)["items"]], ["python", "ai", "cli", "login"])
+        setup.run_action("choose", "gemini")
+        items = setup.check(force=True)["items"]
+        self.assertEqual([i["id"] for i in items], ["python", "ai", "node", "cli", "login"])   # Gemini 는 Node.js 먼저
+        with self.assertRaises(ValueError):
+            setup.run_action("choose", "nope")
 
     def test_unknown_action_refused(self) -> None:
+        setup.run_action("choose", "claude")
         with self.assertRaises(ValueError):
-            setup.run_action("rm -rf /")                                     # 고정된 동작만 받는다
+            setup.run_action("rm -rf /")                                         # 고정된 동작만 받는다
 
-    def test_job_refused_without_claude(self) -> None:
-        reset_data()
-        project, _ = projects.add("noclaude", tempfile.mkdtemp())
+    def test_job_refused_without_ai(self) -> None:
+        project, _ = projects.add("noai", tempfile.mkdtemp())
         folder = projects.data_dir(project["id"])
         note = notes.add(folder, "할 일")
-        old = setup.find_claude
-        setup.find_claude = lambda: None
+        with self.assertRaises(ValueError):
+            runner.ai_job(project["id"], [note])                                 # AI 를 안 골랐다
+        setup.run_action("choose", "claude")
+        old = providers.find_cli
+        providers.find_cli = lambda pid: None
         try:
             with self.assertRaises(ValueError):
-                runner.ai_job(project["id"], [note])
+                runner.ai_job(project["id"], [note])                             # 골랐지만 설치 안 됨
         finally:
-            setup.find_claude = old
-        self.assertEqual(notes.load(folder)[0]["status"], "queued")       # 아무것도 안 바꿨다
-        self.assertFalse(runner.active_marker(project["id"], "claude").exists())
+            providers.find_cli = old
+        self.assertEqual(notes.load(folder)[0]["status"], "queued")           # 아무것도 안 바꿨다
+        self.assertFalse(runner.active_marker(project["id"], "ai").exists())
 
 
 class ApiTests(unittest.TestCase):

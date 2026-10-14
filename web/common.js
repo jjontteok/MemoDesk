@@ -115,15 +115,15 @@ if (window.ResizeObserver) {
     .observe(document.body, { childList: true });
 }
 
-// ── AI 모델 · 추론 강도(사이드바 아래) — 다음 작업부터 적용. 목록은 Claude Code 가 받아 둔 것을 서버가 읽어 준다 ──
+// ── AI 모델 · 추론 강도(사이드바 아래) — 고른 AI 의 것. 다음 작업부터 적용. 목록은 그 AI 프로그램이 받아 둔 것을 서버가 읽어 준다 ──
 document.getElementById("models").innerHTML = `
   <details id="m-fold">
     <summary><span class="mtitle">AI 모델</span><span class="mpicked" id="m-picked"></span></summary>
     <div class="mbody">
-    <label>클로드 <span class="mnote">코드 메모</span><select id="m-claude"></select></label>
-    <input id="m-claude-custom" class="hidden" placeholder="클로드 모델 이름 (Enter 로 저장)" spellcheck="false">
-    <label>추론 강도<select id="m-claude-effort"></select></label>
-    <p class="mnote">다음 작업부터 적용 · 도는 작업은 그대로</p>
+    <label><span id="m-ai">모델</span><select id="m-model"></select></label>
+    <input id="m-custom" class="hidden" placeholder="모델 이름 (Enter 로 저장)" spellcheck="false">
+    <label id="m-effort-l">추론 강도<select id="m-effort"></select></label>
+    <p class="mnote" id="m-hint">다음 작업부터 적용 · 도는 작업은 그대로</p>
     <span class="mmsg" id="m-msg"></span>
     </div>
   </details>`;
@@ -134,41 +134,43 @@ document.getElementById("models").innerHTML = `
 }
 let modelState = null;
 const effortName = e => (modelState && modelState.effort_label[e]) || e;
-const modelInfo = id => (modelState?.claude_models || []).find(x => x.id === id) || null;
+const modelInfo = id => (modelState?.models || []).find(x => x.id === id) || null;
 function renderModels(m) {
   if (!m) return;
   modelState = m;
-  const sel = document.getElementById("m-claude"), custom = document.getElementById("m-claude-custom");
-  const effortSel = document.getElementById("m-claude-effort");
+  const sel = document.getElementById("m-model"), custom = document.getElementById("m-custom");
+  const effortSel = document.getElementById("m-effort");
+  document.getElementById("m-ai").textContent = m.ai ? `${m.name} 모델` : "모델";
+  document.getElementById("m-hint").textContent = m.ai ? `${m.hint} · 다음 작업부터 적용` : "먼저 [환경 점검]에서 쓸 AI 를 고르세요";
+  sel.disabled = !m.ai;
+  document.getElementById("m-effort-l").classList.toggle("hidden", !m.has_effort);
   if (![sel, custom, effortSel].includes(document.activeElement)) {   // 고르는 중인 칸은 새로고침이 덮지 않는다
-    const list = m.claude_models, known = list.some(x => x.id === m.claude);
+    const list = m.models || [], known = list.some(x => x.id === m.model);
     const opt = x => `<option value="${esc(x.id)}">${esc(x.name)}</option>`;
     const main = list.filter(x => x.main), rest = list.filter(x => !x.main);
-    const html = `<option value="">기본 (CLI 설정)</option>`
+    const html = `<option value="">기본</option>`
       + (rest.length ? `<optgroup label="주 모델">${main.map(opt).join("")}</optgroup><optgroup label="그 밖의 버전">${rest.map(opt).join("")}</optgroup>` : main.map(opt).join(""))
       + `<option value="__custom__">직접 입력…</option>`;
     if (sel.dataset.sig !== html) { sel.innerHTML = html; sel.dataset.sig = html; }
-    sel.value = m.claude && !known ? "__custom__" : m.claude;
-    custom.classList.toggle("hidden", !(m.claude && !known));
-    if (m.claude && !known) custom.value = m.claude;
-    const info = modelInfo(m.claude);
-    const efforts = info ? info.efforts : ["low", "medium", "high", "xhigh", "max"];
+    sel.value = m.model && !known ? "__custom__" : m.model;
+    custom.classList.toggle("hidden", !(m.model && !known));
+    if (m.model && !known) custom.value = m.model;
+    const info = modelInfo(m.model);
+    const efforts = info && info.efforts.length ? info.efforts : ["low", "medium", "high"];
     const first = info && info.recommended ? `기본 (추천: ${effortName(info.recommended)})` : "기본";
-    const eh = efforts.length ? `<option value="">${esc(first)}</option>` + efforts.map(e => `<option value="${e}">${esc(effortName(e))}</option>`).join("")
-                              : `<option value="">이 모델은 추론 강도가 없습니다</option>`;
+    const eh = `<option value="">${esc(first)}</option>` + efforts.map(e => `<option value="${e}">${esc(effortName(e))}</option>`).join("");
     if (effortSel.dataset.sig !== eh) { effortSel.innerHTML = eh; effortSel.dataset.sig = eh; }
-    effortSel.disabled = !efforts.length;
-    effortSel.value = efforts.includes(m.claude_effort) ? m.claude_effort : "";
+    effortSel.value = efforts.includes(m.effort) ? m.effort : "";
   }
-  const info = modelInfo(m.claude);
+  const info = modelInfo(m.model);
   const line = document.getElementById("m-picked");
-  line.textContent = `클로드 ${(info ? info.name : m.claude) || "기본"}${m.claude_effort ? " · " + effortName(m.claude_effort) : ""}`;
+  line.textContent = m.ai ? `${m.name} · ${(info ? info.name : m.model) || "기본"}${m.effort ? " · " + effortName(m.effort) : ""}` : "AI 를 고르지 않았습니다";
   line.title = line.textContent;
 }
 async function saveModels(patch) {
-  const body = { claude: modelState?.claude || "", claude_effort: modelState?.claude_effort || "", ...patch };
-  const info = modelInfo(body.claude);
-  if (info && body.claude_effort && !info.efforts.includes(body.claude_effort)) body.claude_effort = "";   // 새 모델이 안 받는 강도는 기본으로
+  const body = { model: modelState?.model || "", effort: modelState?.effort || "", ...patch };
+  const info = modelInfo(body.model);
+  if (info && body.effort && info.efforts.length && !info.efforts.includes(body.effort)) body.effort = "";   // 새 모델이 안 받는 강도는 기본으로
   const { res, data } = await postJson("/api/models", body);
   const msg = document.getElementById("m-msg");
   if (!res.ok) { msg.style.color = "var(--bad)"; msg.textContent = data.error || "저장 실패"; return; }
@@ -178,12 +180,12 @@ async function saveModels(patch) {
   renderModels(data.models);
 }
 {
-  const sel = document.getElementById("m-claude"), custom = document.getElementById("m-claude-custom");
+  const sel = document.getElementById("m-model"), custom = document.getElementById("m-custom");
   sel.addEventListener("change", () => {
     if (sel.value === "__custom__") { custom.classList.remove("hidden"); custom.focus(); return; }
     custom.classList.add("hidden");
-    saveModels({ claude: sel.value });
+    saveModels({ model: sel.value });
   });
-  custom.addEventListener("keydown", e => { if (e.key === "Enter" && custom.value.trim()) saveModels({ claude: custom.value.trim() }); });
-  document.getElementById("m-claude-effort").addEventListener("change", e => saveModels({ claude_effort: e.target.value }));
+  custom.addEventListener("keydown", e => { if (e.key === "Enter" && custom.value.trim()) saveModels({ model: custom.value.trim() }); });
+  document.getElementById("m-effort").addEventListener("change", e => saveModels({ effort: e.target.value }));
 }

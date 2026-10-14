@@ -22,7 +22,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from memodesk import ai_clients, config, notes, projects, runner, setup
+from memodesk import ai_clients, config, notes, projects, providers, runner, setup
 
 WEB_DIR = config.APP_DIR / "web"
 PAGES = {"/": WEB_DIR / "index.html"}
@@ -49,17 +49,26 @@ def restart_needed() -> bool:
 # ── 상태 ─────────────────────────────────────────────────────────────────────
 
 def model_state() -> dict:
-    data = config.load()
-    return {"claude": data.get("claude_model", ""), "claude_effort": data.get("claude_effort", ""),
-            "claude_models": ai_clients.claude_models(), "effort_label": EFFORT_LABEL}
+    """고른 AI 의 모델 · 추론 강도. 목록은 그 AI 프로그램이 받아 둔 것(없으면 이름을 직접 적는다)."""
+    ai = setup.chosen()
+    picked = (config.load().get("models") or {}).get(ai) or {}
+    info = providers.PROVIDERS.get(ai) or {}
+    return {"ai": ai, "name": info.get("name", ""), "model": picked.get("model", ""), "effort": picked.get("effort", ""),
+            "models": ai_clients.model_list(ai) if ai else [], "has_effort": ai in ("claude", "codex"),
+            "hint": info.get("model_hint", ""), "effort_label": EFFORT_LABEL}
 
 
-def set_models(claude: str, effort: str) -> None:
-    if claude and not MODEL_RE.match(claude):
-        raise ValueError(f"모델 이름에 쓸 수 없는 글자가 있다: {claude}")
+def set_models(model: str, effort: str) -> None:
+    ai = setup.chosen()
+    if not ai:
+        raise ValueError("먼저 쓸 AI 를 고르세요")
+    if model and not MODEL_RE.match(model):
+        raise ValueError(f"모델 이름에 쓸 수 없는 글자가 있다: {model}")
     if effort and effort not in EFFORTS:
         raise ValueError(f"모르는 추론 강도: {effort}")
-    config.update(claude_model=claude, claude_effort=effort)
+    models = dict(config.load().get("models") or {})
+    models[ai] = {"model": model, "effort": effort}
+    config.update(models=models)
 
 
 def project_row(project: dict, others: list[dict]) -> dict:
@@ -165,12 +174,12 @@ class Handler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(length) or b"{}")
             path = urlparse(self.path).path
             if path == "/api/models":
-                set_models(str(body.get("claude", "")).strip(), str(body.get("claude_effort", "")).strip())
+                set_models(str(body.get("model", "")).strip(), str(body.get("effort", "")).strip())
                 return self.send_json({"ok": True, "models": model_state()})
             if path == "/api/pick-folder":
                 return self.send_json({"ok": True, "path": setup.pick_folder()})
             if path == "/api/setup/run":
-                return self.send_json({"ok": True, **setup.run_action(str(body.get("action", "")))})
+                return self.send_json({"ok": True, **setup.run_action(str(body.get("action", "")), str(body.get("value", "")))})
             if path.startswith("/api/projects/"):
                 return self.send_json({"ok": True, **self.post_project(path, body)})
             self.post_note(path, body)
@@ -220,6 +229,13 @@ class Handler(BaseHTTPRequestHandler):
         runner.LANES.pop(pid, None)
         return {"moved_records": moved}
 
+    @staticmethod
+    def plain_memo(folder: Path, note_id: str) -> None:
+        """메모 종류는 없앴다(2026-10-14 '그냥 메모야'). 예전에 '사람' 으로 적은 메모를 다시 맡기면 보통 메모로 돌린다."""
+        note = next((n for n in notes.load(folder) if n["id"] == note_id), None)
+        if note and notes.kind_of(note) in notes.HUMAN_KINDS:
+            notes.set_kind(folder, note_id, "code")
+
     def post_note(self, path: str, body: dict) -> None:
         pid = str(body.get("project", ""))
         folder = projects.data_dir(pid)   # 목록에 없는 프로젝트면 여기서 거절한다
@@ -227,7 +243,7 @@ class Handler(BaseHTTPRequestHandler):
         before = str(body.get("before") or "") or None
         with runner.LOCK:
             if path == "/api/notes":
-                note = notes.add(folder, str(body.get("text", "")), str(body.get("kind", "code")), before)
+                note = notes.add(folder, str(body.get("text", "")), "code", before)   # 종류 없이 — 그냥 메모
                 images = decode_images(body)
                 if images:
                     # LOCK 안에서 붙인 뒤에 kick 해야 AI 가 그림 없는 메모를 집지 않는다
@@ -248,9 +264,11 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/notes/requeue":
                 if notes.is_working(folder, note_id):
                     raise ValueError("처리 중인 메모다")
+                self.plain_memo(folder, note_id)
                 notes.set_status(folder, [note_id], "queued", "사람이 다시 맡김")
                 runner.kick(pid)
             elif path == "/api/notes/refine":
+                self.plain_memo(folder, note_id)
                 notes.refine(folder, note_id, str(body.get("text", "")), decode_images(body))
                 runner.kick(pid)
             elif path == "/api/notes/status":

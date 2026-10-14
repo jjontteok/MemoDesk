@@ -23,7 +23,7 @@ import threading
 from datetime import datetime
 from pathlib import Path
 
-from memodesk import config, failures, notes, notify, projects, providers, setup, usage
+from memodesk import accounts, config, failures, notes, notify, projects, providers, setup, usage
 from memodesk.notes import KST
 
 IS_WINDOWS = os.name == "nt"
@@ -270,8 +270,10 @@ def run_job(job: Job) -> None:
             job.step = label
             write_log(job, f"▶ {label}: {' '.join(cmd)}")
             flags = subprocess.CREATE_NEW_PROCESS_GROUP if IS_WINDOWS else 0
+            env = job_env(job.ai)
+            job.account_home = env.get(accounts.ENV_VAR.get(job.ai, ""), "")   # 계정 삭제가 도는 작업의 폴더를 지우지 않게
             with job.log_path.open("a", encoding="utf-8") as out:
-                job.proc = subprocess.Popen(cmd, cwd=cwd, stdout=out, stderr=subprocess.STDOUT, env=job_env(job.ai),
+                job.proc = subprocess.Popen(cmd, cwd=cwd, stdout=out, stderr=subprocess.STDOUT, env=env,
                                             creationflags=flags)
                 rc = job.proc.wait()
             job.results[label] = rc
@@ -485,6 +487,13 @@ def running_jobs(pid: str) -> list[Job]:
         jobs = [JOBS.get(pid), *LANES.get(pid, {}).values()]
     unique = {id(j): j for j in jobs if j and j.state == "running"}
     return sorted(unique.values(), key=lambda j: j.stamp)
+
+
+def busy_account_homes() -> set[str]:
+    """도는 작업들이 쓰는 계정 폴더(모든 프로젝트)."""
+    with LOCK:
+        jobs = [*JOBS.values(), *(j for lanes in LANES.values() for j in lanes.values())]
+    return {j.account_home for j in jobs if j and j.state == "running" and getattr(j, "account_home", "")}
 
 
 def busy(pid: str) -> bool:

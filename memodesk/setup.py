@@ -330,8 +330,9 @@ def run_action(action: str, value: str = "", name: str = "") -> dict:
     if action == "account_use":
         accounts.use(ai, name)
         return {"account": accounts.label(ai)}
-    if action == "account_forget":
-        accounts.forget(ai, name)
+    if action == "account_delete":
+        from memodesk import runner   # 늦게 — runner 가 setup 을 읽는다
+        accounts.delete(ai, name, runner.busy_account_homes())
         return {"account": accounts.label(ai)}
     if action == "account_new":
         accounts.create(ai, name)   # 새 폴더로 바꾼 뒤 그 폴더에 로그인한다

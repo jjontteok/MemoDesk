@@ -54,7 +54,8 @@ python -B -m memodesk --port 8800 --no-notify
 [환경 점검] → AI 마다 **쓸 계정** 목록에서 고릅니다(다음 작업부터). [새 계정 추가]는 MemoDesk 전용 계정 폴더
 (`data/accounts/<AI>/<이름>/`)를 만들고 그 폴더에 로그인합니다 — **이 PC 의 다른 프로그램(터미널의 Claude Code 등) 계정은 바뀌지 않습니다**.
 Claude(`CLAUDE_CONFIG_DIR`) · Codex(`CODEX_HOME`) · Gemini(`GEMINI_CLI_HOME`) 가 됩니다. Copilot · Cursor 는 PC 에 계정이 하나라
-[다시 로그인]으로 바꾸고, 그러면 그 PC 의 그 AI 계정이 같이 바뀝니다. [목록에서 빼기]는 폴더를 지우지 않고 `data/accounts/removed/` 로 옮깁니다.
+[다시 로그인]으로 바꾸고, 그러면 그 PC 의 그 AI 계정이 같이 바뀝니다. [이 계정 삭제]는 그 폴더를 로그인 정보째 지웁니다(되돌릴 수 없음 —
+먼저 묻습니다. 그 계정으로 도는 작업이 있으면 지우지 않습니다). 기본 계정은 지울 수 없습니다.
 
 ## 쓰는 법
 
@@ -158,7 +159,8 @@ Closing the server window stops it; an interrupted job is rolled back on the nex
 In [환경 점검 / Environment check], pick an account from each AI's **account** list (applies from the next job). [새 계정 추가 / Add account]
 creates a MemoDesk-only account folder (`data/accounts/<AI>/<name>/`) and logs in there — **other programs on this PC keep their accounts**.
 Supported for Claude (`CLAUDE_CONFIG_DIR`), Codex (`CODEX_HOME`) and Gemini (`GEMINI_CLI_HOME`). Copilot and Cursor keep one login per PC,
-so switching means logging in again, which changes that AI's account for the whole PC. Removing an account moves its folder to `data/accounts/removed/` instead of deleting it.
+so switching means logging in again, which changes that AI's account for the whole PC. [이 계정 삭제 / Delete account] deletes that folder with its login
+(irreversible — you are asked first; refused while a job is using it). The default account cannot be deleted.
 
 ## How to use
 

@@ -908,7 +908,7 @@ function renderSetup() {
     return `<div class="acct"><label>쓸 계정 <select data-acct="${esc(it.ai)}"${dis}>${opts.join("")}</select></label>
       <button data-setup="account_new" data-value="${esc(it.ai)}"${dis} title="MemoDesk 에서만 쓰는 계정을 하나 더 만들고 로그인합니다">새 계정 추가</button>
       ${it.ok ? `<button data-setup="login" data-value="${esc(it.ai)}"${dis}>이 계정 다시 로그인</button>` : ""}
-      ${a.current ? `<button data-setup="account_forget" data-value="${esc(it.ai)}" data-name="${esc(a.current)}"${dis}>목록에서 빼기</button>` : ""}</div>`;
+      ${a.current ? `<button class="danger" data-setup="account_delete" data-value="${esc(it.ai)}" data-name="${esc(a.current)}"${dis}>이 계정 삭제</button>` : ""}</div>`;
   };
   const row = (it, label) => `<li class="${it.ok ? "ok" : it.required ? "no" : "opt"}${it === now ? " now" : ""}">
       <span class="mark">${it.ok ? "✔" : it.required ? "✘" : "!"}</span>
@@ -977,19 +977,19 @@ setupBox.addEventListener("click", async e => {
     say(act === "add" ? `${nameOf(value)} 를 추가했습니다 — 아래 파란 버튼을 차례로 누르세요` : `${nameOf(value)} 를 뺐습니다`);
     refresh(); return;
   }
-  if (act === "account_new" || act === "account_forget") {
+  if (act === "account_new" || act === "account_delete") {
     let name = b.dataset.name || "";
     if (act === "account_new") {
       name = (prompt(`${nameOf(value)} 새 계정의 이름을 적어 주세요 (예: 회사, 개인2)`) || "").trim();
       if (!name) return;
-    } else if (!confirm(`[${name}] 계정을 목록에서 뺄까요? 로그인 정보는 지우지 않고 보관 폴더로 옮깁니다.`)) return;
-    setupBusy = true; say(act === "account_new" ? "새 계정을 만들고 로그인 창을 여는 중…" : "빼는 중…");
+    } else if (!confirm(`${nameOf(value)} 계정 [${name}] 을 삭제할까요?\n이 PC 에 저장된 로그인 정보가 지워지고 되돌릴 수 없습니다. 기본 계정으로 돌아갑니다.`)) return;
+    setupBusy = true; say(act === "account_new" ? "새 계정을 만들고 로그인 창을 여는 중…" : "삭제하는 중…");
     const { res, data } = await postJson("/api/setup/run", { action: act, value, name });
     setupBusy = false;
     if (!res.ok) { say(data.error || "실패했습니다", "bad"); return; }
     if (act === "account_new") setupLoginOpened = value;
     await loadSetup(true);
-    say(act === "account_new" ? `[${name}] 계정을 만들었습니다 — 열린 창(브라우저)에서 쓸 계정으로 로그인하세요` : `[${name}] 을 뺐습니다 — 기본 계정으로 돌아갑니다`);
+    say(act === "account_new" ? `[${name}] 계정을 만들었습니다 — 열린 창(브라우저)에서 쓸 계정으로 로그인하세요` : `[${name}] 계정을 삭제했습니다 — 기본 계정으로 돌아갑니다`);
     refresh(); return;
   }
   if (act === "recheck") { say("확인하는 중…"); await loadSetup(true); say(setupData.ready ? "준비가 끝났습니다" : "아직 준비가 덜 됐습니다 — 표시된 버튼을 누르세요", setupData.ready ? "ok" : ""); return; }

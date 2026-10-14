@@ -90,20 +90,19 @@ def create(ai: str, name: str) -> None:
     use(ai, name)
 
 
-def forget(ai: str, name: str) -> Path:
-    """계정을 목록에서 뺀다 — 폴더는 지우지 않고 `data/accounts/removed/` 로 옮긴다(로그인 정보가 들어 있다)."""
+def delete(ai: str, name: str, busy_homes: set[str] = frozenset()) -> None:
+    """계정을 지운다 — 폴더째(이 PC 에 저장된 로그인 정보까지). 되돌릴 수 없어 화면이 먼저 묻는다(2026-10-14 사용자 요청).
+    busy_homes = 도는 작업이 쓰는 계정 폴더 — 그 폴더는 지우지 않는다. 지금 쓰던 계정이면 기본 계정으로 돌아간다."""
     if name not in names(ai):
         raise ValueError(f"없는 계정: {name}")
+    target = (root(ai) / name).resolve()
+    if target.parent != root(ai).resolve():
+        raise ValueError("MemoDesk 계정 폴더가 아니다")
+    if str(root(ai) / name) in busy_homes:
+        raise ValueError("이 계정으로 도는 작업이 있습니다 — 끝난 뒤에 지우세요")
     if current(ai) == name:
         use(ai, "")
-    dest = config.DATA_DIR / "accounts" / "removed" / f"{ai}-{name}"
-    n = 2
-    while dest.exists():
-        dest = config.DATA_DIR / "accounts" / "removed" / f"{ai}-{name}-{n}"
-        n += 1
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    shutil.move(str(root(ai) / name), str(dest))
-    return dest
+    shutil.rmtree(target)
 
 
 def state(ai: str) -> dict:

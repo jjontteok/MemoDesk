@@ -308,13 +308,24 @@ class AccountTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             accounts.use("claude", "없는계정")
 
-    def test_forget_moves_folder_and_falls_back_to_default(self) -> None:
+    def test_delete_removes_folder_and_falls_back_to_default(self) -> None:
         accounts.create("codex", "회사")
-        (config.DATA_DIR / "accounts" / "codex" / "회사" / "auth.json").write_text("{}", encoding="utf-8")
-        dest = accounts.forget("codex", "회사")
-        self.assertTrue((dest / "auth.json").is_file())   # 지우지 않고 옮긴다
+        home = config.DATA_DIR / "accounts" / "codex" / "회사"
+        (home / "auth.json").write_text("{}", encoding="utf-8")
+        with self.assertRaises(ValueError):   # 도는 작업이 쓰는 폴더는 지우지 않는다
+            accounts.delete("codex", "회사", {str(home)})
+        self.assertTrue(home.is_dir())
+        accounts.delete("codex", "회사")
+        self.assertFalse(home.exists())
         self.assertEqual(accounts.current("codex"), "")
         self.assertEqual(accounts.names("codex"), [])
+        with self.assertRaises(ValueError):
+            accounts.delete("codex", "회사")
+
+    def test_delete_action_goes_through_setup(self) -> None:
+        accounts.create("gemini", "b")
+        setup.run_action("account_delete", "gemini", "b")
+        self.assertEqual(accounts.names("gemini"), [])
 
     def test_login_step_carries_account_state(self) -> None:
         accounts.create("claude", "회사")

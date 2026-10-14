@@ -1,0 +1,65 @@
+/* MemoDesk 공통 — 색 · 바탕 · 위 띠 · 사이드바 틀 · AI 모델 칸 · 버튼 (차시 작업대 desk_common.css 에서) */
+:root {
+  --bg: #f5f6f8; --card: #ffffff; --ink: #1d2330; --muted: #6a7282; --line: #dde1e8;
+  --accent: #2f6fde; --ok: #1f8a4c; --warn: #b7791f; --bad: #c0392b; --chip: #eef1f6; --hl: #fff7e6;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #14171c; --card: #1d2128; --ink: #e6e9ef; --muted: #98a1b0; --line: #2e3440;
+          --accent: #6a9cf5; --ok: #4cc07f; --warn: #e0a84a; --bad: #ef6b5e; --chip: #272c35; --hl: #2d2718; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+       font: 14px/1.5 "Pretendard", "Noto Sans KR", "Apple SD Gothic Neo", "Segoe UI", sans-serif; }
+.hidden { display: none !important; } /* 필터 · 편집 칸 숨김 — 요소의 다른 display 규칙보다 반드시 이겨야 한다 */
+
+.restart-banner { position: sticky; top: 0; z-index: 60; padding: 10px 16px; background: var(--bad); color: #fff;
+                  font-weight: 700; text-align: center; }
+/* 위 띠도 스크롤해도 따라온다. 다시 켜기 띠가 보이면 그 아래에 붙고, 사이드바는 그 아래에 붙는다 —
+   높이는 common.js stickyOffsets 가 재서 --banner-h · --nav-h 로 준다 */
+.topnav { position: sticky; top: var(--banner-h, 0px); z-index: 50; background: var(--bg);
+          display: flex; align-items: baseline; gap: 12px; padding: 10px 16px 6px; max-width: 1400px; margin: 0 auto; }
+.topnav .brand { font-weight: 800; font-size: 17px; }
+.topnav .meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.side { position: sticky; top: calc(var(--banner-h, 0px) + var(--nav-h, 0px) + 8px); align-self: start;
+        max-height: calc(100vh - var(--banner-h, 0px) - var(--nav-h, 0px) - 20px); overflow-y: auto;
+        background: var(--card); border: 1px solid var(--line); border-radius: 12px; margin-top: 8px; }
+.side { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+.side:hover { scrollbar-color: var(--muted) transparent; }
+.side::-webkit-scrollbar, .side *::-webkit-scrollbar { width: 8px; height: 8px; }
+.side::-webkit-scrollbar-track, .side *::-webkit-scrollbar-track { background: transparent; }
+.side::-webkit-scrollbar-thumb, .side *::-webkit-scrollbar-thumb { background: var(--line); border-radius: 999px; border: 2px solid var(--card); }
+.side:hover::-webkit-scrollbar-thumb, .side:hover *::-webkit-scrollbar-thumb { background: var(--muted); }
+.side * { scrollbar-width: thin; scrollbar-color: inherit; }
+.to-top { width: 100%; margin-top: 12px; }
+.models { margin-top: 12px; border-top: 1px dashed var(--line); padding-top: 10px; }
+.models .mbody { display: grid; gap: 6px; margin-top: 8px; }
+.models summary { cursor: pointer; display: grid; gap: 2px; list-style: none; }
+.models summary::-webkit-details-marker { display: none; }
+.models .mtitle { font-size: 12px; font-weight: 700; color: var(--muted); }
+.models .mtitle::before { content: "▸ "; }
+.models details[open] .mtitle::before { content: "▾ "; }
+.models .mpicked { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.models details[open] .mpicked { display: none; }
+.models label { display: grid; gap: 3px; font-size: 12px; color: var(--muted); }
+.models select, .models input { font: inherit; font-size: 13px; color: var(--ink); background: var(--bg);
+                                border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; width: 100%; }
+.models .mnote { font-size: 11px; color: var(--muted); margin: 0; }
+.models .mmsg { font-size: 11px; color: var(--ok); min-height: 1em; }
+
+.meta { color: var(--muted); font-size: 12px; }
+.empty { color: var(--muted); }
+button, .btn { font: inherit; border: 1px solid var(--line); background: var(--chip); color: var(--ink);
+               border-radius: 8px; padding: 6px 12px; cursor: pointer; text-decoration: none; }
+button:disabled { opacity: .45; cursor: not-allowed; }
+.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.danger { color: var(--bad); border-color: var(--bad); background: transparent; }
+input[type=text], textarea { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line);
+                             border-radius: 8px; padding: 6px 8px; }
+
+@media (max-width: 800px) {
+  /* 좁은 화면 — 사이드바를 위에 붙은 가로 줄로 바꾼다 */
+  .side { top: calc(var(--banner-h, 0px) + var(--nav-h, 0px)); z-index: 5; max-height: none; border-radius: 0 0 12px 12px; }
+  .side h5 { display: none; }
+  .to-top { display: none; }
+}

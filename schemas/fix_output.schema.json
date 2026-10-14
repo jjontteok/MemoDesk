@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "fix_output",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["notes", "summary"],
+  "properties": {
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "result", "headline", "files", "detail"],
+        "properties": {
+          "id": {"type": "string"},
+          "result": {"type": "string", "enum": ["fixed", "needs_confirm", "not_fixed"]},
+          "headline": {"type": "string"},
+          "files": {"type": "array", "items": {"type": "string"}},
+          "detail": {"type": "string"}
+        }
+      }
+    },
+    "summary": {"type": "string"}
+  }
+}

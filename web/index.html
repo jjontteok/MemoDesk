@@ -1,0 +1,705 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MemoDesk</title>
+<link rel="stylesheet" href="/static/common.css">
+<style>
+  .layout { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 16px; max-width: 1400px; margin: 0 auto; padding: 0 16px; }
+  .side { padding: 12px; }
+  .side h5 { margin: 12px 0 6px; font-size: 12px; color: var(--muted); font-weight: 700; }
+  .side .group { display: flex; flex-wrap: wrap; gap: 6px; }
+  .side .group button { border-radius: 999px; padding: 3px 11px; font-size: 13px; }
+  .side button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .side .plist { display: grid; gap: 4px; }
+  .side .plist button { border-radius: 8px; text-align: left; display: grid; grid-template-columns: 1fr auto; gap: 6px; align-items: center; padding: 5px 8px; }
+  .side .plist .pn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+  .side .dot { font-size: 11px; color: var(--warn); white-space: nowrap; }
+  .side button.on .dot { color: #fff; }
+  .add-project { width: 100%; }
+  main { padding: 8px 0 40px; display: grid; gap: 16px; min-width: 0; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+  .head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 12px; }
+  .head h2 { font-size: 18px; margin: 0; }
+  .gtag { font-size: 11px; padding: 0 8px; border-radius: 999px; background: var(--chip); color: var(--muted); }
+  .actions { margin-left: auto; display: flex; flex-wrap: wrap; gap: 8px; }
+  .qstate { margin-top: 8px; font-size: 13px; }
+  .qstate.running { color: var(--warn); } .qstate.paused { color: var(--bad); } .qstate.idle { color: var(--muted); }
+  .path { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 8px; font-size: 12px; color: var(--muted); }
+  .path code { font-size: 12px; color: var(--ink); background: var(--chip); padding: 2px 6px; border-radius: 6px; word-break: break-all; }
+  .path button { padding: 2px 10px; font-size: 12px; }
+  .warnline { color: var(--warn); font-size: 12px; margin-top: 4px; }
+  .warnline.bad { color: var(--bad); }
+  /* 프로젝트 추가 · 설정 칸 */
+  .pform { display: grid; gap: 8px; margin-top: 10px; border: 1px solid var(--accent); border-radius: 10px; padding: 12px; background: var(--card); }
+  .pform label { display: grid; gap: 3px; font-size: 12px; color: var(--muted); }
+  .pform textarea { min-height: 52px; resize: vertical; }
+  .pform .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .pform .row .sp { flex: 1; }
+  .pform h3 { margin: 0; font-size: 15px; }
+  .add { display: flex; gap: 8px; margin: 12px 0 8px; flex-wrap: wrap; }
+  .add textarea { flex: 1; min-height: 64px; resize: vertical; }
+  .kinds { display: flex; flex-direction: column; gap: 4px; }
+  .kinds label { position: relative; cursor: pointer; }
+  .kinds input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }
+  .kinds span { display: block; text-align: center; min-width: 52px; padding: 5px 10px; font-size: 13px;
+                border: 1px solid var(--line); border-radius: 8px; background: var(--chip); color: var(--ink); }
+  .kinds label:hover span { border-color: var(--accent); }
+  .kinds input:checked + span { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .kinds input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .submit { display: flex; flex-direction: column; gap: 6px; width: 170px; }
+  .submit select { font: inherit; font-size: 12px; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 4px; }
+  .submit .save { flex: 1; }
+  h4.sec { font-size: 13px; margin: 14px 0 6px; color: var(--muted); font-weight: 700; }
+  h4.sec.dhead:not(:empty) { margin-top: 18px; padding-top: 14px; border-top: 2px solid var(--line); }
+  /* 여러 프로젝트를 함께 볼 때 처리된 메모는 5개 높이까지만 — 그 안에서 스크롤. 제목을 누르면 접고 편다 */
+  body.multi ul.notes.capped { max-height: var(--done-max); overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; border-bottom: 1px dashed var(--line); }
+  body.multi h4.sec.dhead:not(:empty) { cursor: pointer; user-select: none; }
+  body.multi h4.sec.dhead:not(:empty)::before { content: "▾ "; }
+  body.multi .done-folded h4.sec.dhead:not(:empty)::before { content: "▸ "; }
+  body.multi h4.sec.dhead:not(:empty):hover { color: var(--accent); }
+  body.multi .done-folded ul.notes { display: none; }
+  ol.queue, ul.notes { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+  ol.queue li, ul.notes li { display: grid; grid-template-columns: auto minmax(16em, 1fr) auto; gap: 8px; align-items: start;
+                padding: 8px; border: 1px solid var(--line); border-radius: 8px; }
+  ol.queue li.working { background: var(--hl); border-color: var(--warn); }
+  ol.queue li.queued { cursor: grab; }
+  ol.queue li.dragging { opacity: .45; }
+  ol.queue li.drop-before { box-shadow: 0 -3px 0 var(--accent); }
+  ol.queue li.drop-after { box-shadow: 0 3px 0 var(--accent); }
+  .grip { color: var(--muted); font-size: 16px; line-height: 1; margin-right: 2px; user-select: none; }
+  .pos { font-weight: 700; color: var(--muted); min-width: 22px; text-align: right; }
+  .nid { font-weight: 700; color: var(--muted); display: grid; gap: 2px; justify-items: start; align-content: start; align-self: start; }
+  .kind { font-size: 11px; font-weight: 400; padding: 0 6px; border-radius: 999px; background: var(--chip); }
+  .k-code { color: var(--accent); } .k-human { color: var(--bad); }
+  .ntext { white-space: pre-wrap; word-break: break-word; }
+  .nlog { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  details.nres { margin-top: 4px; font-size: 12px; }
+  details.nres > summary { list-style: none; display: flex; flex-wrap: wrap; gap: 2px 6px; align-items: baseline; cursor: pointer; font-size: 13px; }
+  details.nres > summary::-webkit-details-marker { display: none; }
+  details.nres > summary::before { content: "▸"; color: var(--muted); font-size: 11px; }
+  details.nres[open] > summary::before { content: "▾"; }
+  .rtag { font-size: 11px; padding: 0 7px; border-radius: 999px; background: var(--chip); white-space: nowrap; font-weight: 700; }
+  .rtag.r-ok { color: var(--ok); } .rtag.r-ask { color: var(--warn); } .rtag.r-bad { color: var(--bad); }
+  .rhead { font-weight: 600; word-break: break-word; flex: 1 1 12em; min-width: 0; }
+  .rwhen { color: var(--muted); font-size: 11px; white-space: nowrap; margin-left: auto; }
+  .rbody { margin: 6px 0 2px 16px; padding: 6px 10px; border-left: 3px solid var(--line); color: var(--muted); white-space: pre-wrap; word-break: break-word; line-height: 1.55; }
+  .rfiles { margin-top: 4px; font-size: 12px; color: var(--muted); word-break: break-all; }
+  .rfiles code { background: var(--chip); color: var(--ink); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+  .nact { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; align-items: center; max-width: 24rem; }
+  .nact button { padding: 2px 8px; font-size: 12px; }
+  .nact.rows { flex-direction: column; align-items: flex-end; flex-wrap: nowrap; max-width: none; }
+  .nact .arow { display: flex; gap: 4px; align-items: center; justify-content: flex-end; flex-wrap: wrap; }
+  .nact .arow:empty { display: none; }
+  .st { font-size: 12px; padding: 1px 8px; border-radius: 999px; background: var(--chip); white-space: nowrap; }
+  .st-queued { color: var(--accent); } .st-working { color: var(--warn); } .st-open { color: var(--bad); }
+  .st-review { color: var(--ok); } .st-done { color: var(--muted); text-decoration: line-through; }
+  li.done .ntext { color: var(--muted); }
+  select.kindsel { font: inherit; font-size: 12px; color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 2px 4px; }
+  ol.refines { margin: 4px 0 0; padding-left: 18px; font-size: 13px; }
+  ol.refines li { display: list-item; padding: 0; border: 0; background: none; }
+  .refine { grid-column: 1 / -1; display: grid; gap: 6px; margin-top: 4px; }
+  .refine textarea { border-color: var(--accent); min-height: 64px; resize: vertical; }
+  .refine-acts { display: flex; gap: 6px; align-items: center; justify-content: flex-end; flex-wrap: wrap; }
+  .refine-acts .meta { margin-right: auto; }
+  .paste-thumbs { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; flex-basis: 100%; order: 10; padding-top: 6px; }
+  .paste-thumbs:empty { display: none; }
+  .refine .paste-thumbs { order: 0; padding-top: 0; }
+  .paste-thumbs .pt { position: relative; }
+  .paste-thumbs img, .nimgs img { height: 64px; max-width: 120px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); display: block; }
+  .paste-thumbs .pt button { position: absolute; top: -6px; right: -6px; padding: 0 5px; font-size: 11px; border-radius: 999px; }
+  .nimgs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+  .job { margin-top: 12px; border-top: 1px dashed var(--line); padding-top: 10px; }
+  .job-line { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .js-running { color: var(--warn); } .js-ok { color: var(--ok); } .js-failed, .js-stopped { color: var(--bad); }
+  details summary { cursor: pointer; color: var(--muted); font-size: 12px; margin-top: 6px; }
+  pre { max-height: 260px; overflow: auto; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px; font-size: 12px; white-space: pre-wrap; word-break: break-all; margin: 6px 0 0; }
+  .hist { color: var(--muted); font-size: 12px; margin: 6px 0 0; padding-left: 16px; }
+  .usage .table-wrap { overflow-x: auto; margin-top: 6px; }
+  .usage table { border-collapse: collapse; width: 100%; font-size: 12px; }
+  .usage th, .usage td { border: 1px solid var(--line); padding: 4px 6px; text-align: right; white-space: nowrap; }
+  .usage th { background: var(--chip); font-weight: 600; }
+  .usage td.l, .usage th.l { text-align: left; }
+  .usage tr.sum td { font-weight: 700; background: var(--chip); }
+  .err { color: var(--bad); font-size: 12px; min-height: 1em; }
+  .welcome { background: var(--card); border: 1px dashed var(--line); border-radius: 12px; padding: 24px; }
+  .welcome h2 { margin-top: 0; }
+  @media (max-width: 800px) {
+    .layout { grid-template-columns: 1fr; }
+    .side { padding: 8px; display: grid; gap: 4px; }
+    .side .group, .side .plist { display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 6px; padding-bottom: 2px; }
+    .side .plist button { display: inline-flex; white-space: nowrap; }
+  }
+  @media (max-width: 640px) {
+    .actions { margin-left: 0; width: 100%; }
+    .kinds { flex-direction: row; }
+    .add textarea { flex-basis: 100%; }
+    .submit { width: 100%; flex-direction: row; }
+    ol.queue li, ul.notes li { grid-template-columns: auto 1fr; }
+    .nact { grid-column: 1 / -1; justify-content: flex-start; }
+    .nact.rows, .nact .arow { align-items: flex-start; justify-content: flex-start; }
+  }
+</style>
+</head>
+<body>
+<nav class="topnav"><span class="brand">MemoDesk</span><span class="meta" id="datadir"></span></nav>
+<div class="layout">
+<aside class="side" aria-label="프로젝트 고르기">
+  <button class="primary add-project" id="open-add" type="button">+ 프로젝트 추가</button>
+  <h5>묶음</h5><div class="group" id="f-group"></div>
+  <h5>프로젝트</h5><div class="plist" id="f-project"></div>
+  <div class="models" id="models" aria-label="AI 모델"></div>
+  <button class="to-top" type="button" onclick="window.scrollTo({ top: 0, behavior: 'smooth' })">↑ 맨 위로</button>
+</aside>
+<main>
+  <section class="pform hidden" id="add-form" aria-label="프로젝트 추가">
+    <h3>프로젝트 추가</h3>
+    <label>이름 <input type="text" class="f-name" placeholder="예: 홈페이지 리뉴얼"></label>
+    <label>경로 — AI 가 고칠 폴더의 전체 경로 <input type="text" class="f-path" spellcheck="false" placeholder="예: C:\work\homepage"></label>
+    <label>묶음 (선택) — 왼쪽에서 묶어 보기 <input type="text" class="f-group" placeholder="예: 디자인팀"></label>
+    <label>백업에서 뺄 폴더 (선택, 줄마다 또는 쉼표로) — .git · node_modules · dist · build 등은 늘 뺍니다 <textarea class="f-excludes" spellcheck="false" placeholder="예: assets/videos"></textarea></label>
+    <label>AI 에게 줄 추가 지시 (선택) — 폴더의 CLAUDE.md · AGENTS.md 는 AI 가 알아서 읽습니다 <textarea class="f-instructions" placeholder="예: 화면 문구는 존댓말로 / tests 폴더는 고치지 않는다"></textarea></label>
+    <div class="row"><button class="primary f-save" type="button">추가</button><button class="f-cancel" type="button">취소</button><span class="err f-err"></span></div>
+  </section>
+  <div id="list"><p class="empty">불러오는 중…</p></div>
+</main>
+</div>
+<script src="/static/common.js"></script>
+<script>
+const STATUS = { queued: "대기", working: "처리 중", review: "확인 대기", open: "열림", done: "완료" };
+const JOB = { running: "도는 중", ok: "끝남", failed: "실패", stopped: "멈춤" };
+const NOTE_KIND = { code: "코드", human: "사람" };
+const AI_OF = { code: "클로드", human: "사람이 처리" };
+const cards = new Map();
+const filter = { group: "all", project: "all" };
+try { for (const k of Object.keys(filter)) filter[k] = localStorage.getItem(`memodesk-${k}`) || "all"; } catch {}
+const groupOf = p => p.group || "";
+const shown = p => (filter.group === "all" || groupOf(p) === filter.group) && (filter.project === "all" || filter.project === p.id);
+const busyOf = p => p.queue_running || (p.jobs || []).length > 0;
+let lastProjects = [];
+
+// ── 프로젝트 추가 ──
+const addForm = document.getElementById("add-form");
+function formValues(box) {
+  return { name: box.querySelector(".f-name").value, path: box.querySelector(".f-path").value, group: box.querySelector(".f-group").value,
+           excludes: box.querySelector(".f-excludes").value, instructions: box.querySelector(".f-instructions").value };
+}
+document.getElementById("open-add").onclick = () => { addForm.classList.remove("hidden"); addForm.querySelector(".f-name").focus(); window.scrollTo({ top: 0, behavior: "smooth" }); };
+addForm.querySelector(".f-cancel").onclick = () => addForm.classList.add("hidden");
+addForm.querySelector(".f-save").onclick = async () => {
+  const { res, data } = await postJson("/api/projects/add", formValues(addForm));
+  const err = addForm.querySelector(".f-err");
+  if (!res.ok) { err.textContent = data.error || "추가하지 못했습니다"; return; }
+  err.textContent = "";
+  addForm.querySelectorAll("input, textarea").forEach(x => { x.value = ""; });
+  addForm.classList.add("hidden");
+  filter.project = data.project.id; filter.group = "all"; saveFilter();
+  if (data.warning) alert(data.warning);
+  refresh();
+};
+
+// ── 왼쪽: 묶음 · 프로젝트 목록 ──
+function saveFilter() { for (const k of Object.keys(filter)) { try { localStorage.setItem(`memodesk-${k}`, filter[k]); } catch {} } }
+function renderSidebar(list) {
+  lastProjects = list;
+  const groups = [...new Set(list.map(groupOf).filter(Boolean))].sort();
+  if (filter.group !== "all" && !groups.includes(filter.group)) filter.group = "all";
+  const busy = list.filter(busyOf);
+  const count = test => { const n = busy.filter(test).length; return n ? ` <span class="dot">● ${n}</span>` : ""; };
+  document.getElementById("f-group").innerHTML = groups.length
+    ? [`<button data-key="group" data-v="all" class="${filter.group === "all" ? "on" : ""}">전체${count(() => true)}</button>`,
+       ...groups.map(g => `<button data-key="group" data-v="${esc(g)}" class="${filter.group === g ? "on" : ""}">${esc(g)}${count(p => groupOf(p) === g)}</button>`)].join("")
+    : `<span class="meta">묶음이 없습니다</span>`;
+  const visible = list.filter(p => filter.group === "all" || groupOf(p) === filter.group);
+  if (filter.project !== "all" && !visible.some(p => p.id === filter.project)) filter.project = "all";
+  const item = p => {
+    const queued = p.notes.filter(n => n.status === "queued").length;
+    const mark = busyOf(p) ? `<span class="dot">● 처리 중</span>` : queued ? `<span class="dot">대기 ${queued}</span>` : p.paused ? `<span class="dot">■</span>` : "";
+    return `<button data-key="project" data-v="${esc(p.id)}" class="${filter.project === p.id ? "on" : ""}" title="${esc(p.path)}"><span class="pn">${esc(p.name)}</span>${mark}</button>`;
+  };
+  document.getElementById("f-project").innerHTML = list.length
+    ? `<button data-key="project" data-v="all" class="${filter.project === "all" ? "on" : ""}"><span class="pn">전체 보기</span>${count(p => visible.includes(p))}</button>` + visible.map(item).join("")
+    : `<span class="meta">아직 없습니다</span>`;
+}
+document.addEventListener("click", e => {
+  const b = e.target.closest(".side button[data-key]");
+  if (!b) return;
+  filter[b.dataset.key] = b.dataset.v;
+  if (b.dataset.key === "group") filter.project = "all";
+  saveFilter();
+  renderSidebar(lastProjects);
+  applyFilter();
+  if (b.dataset.key === "project" && filter.project !== "all") window.scrollTo({ top: 0, behavior: "smooth" });
+});
+function applyFilter() {
+  for (const [id, el] of cards) el.classList.toggle("hidden", !shown(el._row));
+  document.body.classList.toggle("multi", [...cards.values()].filter(el => !el.classList.contains("hidden")).length > 1);
+  for (const el of cards.values()) { applyDoneFold(el); if (!el.classList.contains("hidden")) fitDone(el); }
+}
+
+function short(s, n = 24) { s = String(s || "").replace(/\s+/g, " "); return s.length > n ? s.slice(0, n) + "…" : s; }
+async function post(path, body, card) {
+  const { res, data } = await postJson(path, body);
+  if (card) card.querySelector(".err").textContent = res.ok ? "" : (data.error || "요청 실패");
+  refresh();
+  return { ok: res.ok, data };
+}
+
+// ── 프로젝트 카드 ──
+function makeCard(row) {
+  const el = document.createElement("section");
+  el.className = "card";
+  el.dataset.project = row.id;
+  el.innerHTML = `
+    <div class="head">
+      <h2 class="pname"></h2><span class="gtag hidden"></span>
+      <div class="actions"><button class="softctl hidden"></button><button class="runctl"></button></div>
+    </div>
+    <div class="qstate"></div>
+    <div class="path"><span>경로</span><code class="pp"></code><button class="open-folder" title="탐색기로 엽니다">폴더 열기</button><button class="edit-project">설정</button></div>
+    <div class="warnline hidden"></div>
+    <section class="pform hidden settings" aria-label="프로젝트 설정">
+      <label>이름 <input type="text" class="f-name"></label>
+      <label>경로 <input type="text" class="f-path" spellcheck="false"></label>
+      <label>묶음 <input type="text" class="f-group"></label>
+      <label>백업에서 뺄 폴더 (줄마다 또는 쉼표로) — .git · node_modules · dist · build 등은 늘 뺍니다 <textarea class="f-excludes" spellcheck="false"></textarea></label>
+      <label>AI 에게 줄 추가 지시 <textarea class="f-instructions"></textarea></label>
+      <div class="row"><button class="primary f-save" type="button">저장</button><button class="f-cancel" type="button">취소</button><span class="sp"></span>
+        <button class="danger f-remove" type="button" title="MemoDesk 목록에서만 뺍니다. 프로젝트 폴더는 건드리지 않습니다">목록에서 빼기</button></div>
+    </section>
+    <div class="add">
+      <div class="kinds">
+        <label title="클로드가 프로젝트 폴더 안의 일을 합니다"><input type="radio" name="k-${esc(row.id)}" value="code" checked><span>코드</span></label>
+        <label title="AI 에게 맡기지 않고 사람이 처리할 할 일로 적어 둡니다"><input type="radio" name="k-${esc(row.id)}" value="human"><span>사람</span></label>
+      </div>
+      <textarea placeholder="할 일 (예: 로그인 버튼 글자를 '시작하기'로 / README 설치 방법에 Windows 안내 추가) · 화면 캡처는 Ctrl+V 로 붙여 넣거나 끌어다 놓으세요 · Enter 로 적기, Shift+Enter 줄바꿈"></textarea>
+      <div class="paste-thumbs"></div>
+      <div class="submit"><select class="before" aria-label="넣을 자리"><option value="">대기열 맨 뒤에</option></select><button class="primary save">적기</button></div>
+    </div>
+    <div class="err"></div>
+    <h4 class="sec qhead"></h4><ol class="queue"></ol>
+    <h4 class="sec dhead"></h4><ul class="notes"></ul>
+    <div class="job"></div>
+    <details class="usage"><summary></summary><div class="table-wrap"></div></details>`;
+  const ref = () => ({ project: row.id });
+  const ta = el.querySelector(".add textarea");
+  const beforeSel = el.querySelector(".before");
+  // 메모에 그림 붙이기 — Ctrl+V 나 끌어다 놓기. [적기] 때 같이 올리고, AI 는 그 그림을 열어 본다
+  el._pending = [];
+  const thumbs = el.querySelector(".paste-thumbs");
+  const drawPending = () => { thumbs.innerHTML = pendingThumbs(el._pending, "pt", "[적기] 때 같이 올립니다"); };
+  takeImages(ta, async files => { el._pending.push(...await readImages(files)); drawPending(); });
+  thumbs.addEventListener("click", e => { const b = e.target.closest("button[data-pt]"); if (b) { el._pending.splice(+b.dataset.pt, 1); drawPending(); } });
+  let saving = false;
+  const save = async () => {
+    if (saving) return;
+    if (!ta.value.trim()) { if (el._pending.length) el.querySelector(".err").textContent = "그림과 함께 할 일을 글로 적어 주세요"; return; }
+    const kind = el.querySelector(".kinds input:checked")?.value || "code";
+    saving = true;
+    try {
+      if ((await post("/api/notes", { ...ref(), text: ta.value, kind, before: beforeSel.value, images: el._pending }, el)).ok) {
+        ta.value = ""; beforeSel.value = ""; el._pending = []; drawPending();
+      }
+    } finally { saving = false; }
+  };
+  el.querySelector(".save").onclick = save;
+  ta.addEventListener("keydown", e => {   // 한글 조합 중의 Enter 는 글자 확정이라 넘긴다
+    if (e.key !== "Enter" || e.shiftKey || e.isComposing || e.keyCode === 229) return;
+    e.preventDefault(); save();
+  });
+  el.querySelector(".runctl").onclick = () => {
+    const r = el._row;
+    if (r.paused) return post("/api/resume", ref(), el);
+    if (!busyOf(r) || confirm("지금 멈출까요? 처리 중인 작업을 끊고 그 작업이 바꾼 것을 되돌립니다(그 작업의 AI 비용은 버려지고, 그사이 직접 고친 것도 되돌아갑니다).\n\n하던 작업은 마치게 두려면 [이번 작업 끝나면 멈춤]을 누르세요.")) post("/api/stop", ref(), el);
+  };
+  el.querySelector(".softctl").onclick = () => post("/api/pause_after", { ...ref(), on: !el._row.pause_after }, el);
+  el.querySelector(".open-folder").onclick = () => post("/api/projects/open", ref(), el);
+  // 설정 — 이름 · 경로 · 묶음 · 제외 목록 · 추가 지시. 여는 동안은 2초 새로고침이 칸을 덮지 않는다
+  const settings = el.querySelector(".settings");
+  el.querySelector(".edit-project").onclick = () => {
+    const r = el._row;
+    settings.querySelector(".f-name").value = r.name; settings.querySelector(".f-path").value = r.path;
+    settings.querySelector(".f-group").value = r.group || ""; settings.querySelector(".f-excludes").value = (r.excludes || []).join("\n");
+    settings.querySelector(".f-instructions").value = r.instructions || "";
+    settings.classList.toggle("hidden");
+  };
+  settings.querySelector(".f-cancel").onclick = () => settings.classList.add("hidden");
+  settings.querySelector(".f-save").onclick = async () => {
+    const { ok, data } = await post("/api/projects/edit", { ...ref(), ...formValues(settings) }, el);
+    if (ok) { settings.classList.add("hidden"); if (data.warning) alert(data.warning); }
+  };
+  settings.querySelector(".f-remove").onclick = async () => {
+    if (!confirm(`「${el._row.name}」을 MemoDesk 목록에서 뺄까요?\n프로젝트 폴더는 그대로 둡니다.`)) return;
+    const del = confirm("메모 · 작업 기록 · 백업도 함께 치울까요?\n[확인] 기록을 data/trash 로 옮깁니다(지우지 않습니다)\n[취소] 기록은 그대로 둡니다");
+    if ((await post("/api/projects/remove", { ...ref(), delete_records: del }, el)).ok) { cards.delete(row.id); el.remove(); }
+  };
+  const onNoteClick = e => {
+    const b = e.target.closest("button[data-act]");
+    if (!b) return;
+    const id = b.dataset.id, act = b.dataset.act;
+    if (act === "delete") { if (confirm(`${id} 메모를 지울까요?`)) post("/api/notes/delete", { ...ref(), id }, el); }
+    else if (act === "move") post("/api/notes/move", { ...ref(), id, before: b.dataset.before }, el);
+    else if (act === "requeue") post("/api/notes/requeue", { ...ref(), id }, el);
+    else if (act === "refine") {
+      const keep = el._refine?.id === id ? el._refine : null;
+      el._refine = { id, draft: keep ? keep.draft : "", images: keep ? keep.images : [] };
+      renderDone(el, el._row); el.querySelector("textarea.refine-text")?.focus();
+    }
+    else if (act === "refine-img-del") { el._refine?.images.splice(+b.dataset.k, 1); drawRefineThumbs(); }
+    else if (act === "refine-cancel") { el._refine = null; renderDone(el, el._row); }
+    else if (act === "refine-send") sendRefine(id);
+    else if (act === "edit") {
+      const note = el._row.notes.find(n => n.id === id);
+      el._edit = { id, draft: note ? note.text : "" };
+      renderQueue(el, el._row);
+      const t = el.querySelector("textarea.edit-text");
+      if (t) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); }
+    }
+    else if (act === "edit-cancel") { el._edit = null; renderQueue(el, el._row); }
+    else if (act === "edit-save") saveEdit(id);
+    else post("/api/notes/status", { ...ref(), id, status: act }, el);
+  };
+  const queue = el.querySelector(".queue");
+  queue.onclick = onNoteClick;
+  el.querySelector(".notes").onclick = onNoteClick;
+  // 대기 메모 끌어 놓기
+  const clearMarks = () => queue.querySelectorAll(".drop-before, .drop-after").forEach(x => x.classList.remove("drop-before", "drop-after"));
+  const dropSpot = e => {
+    const li = e.target.closest("li.queued");
+    if (!li || li.dataset.id === el._dragId) return null;
+    const box = li.getBoundingClientRect();
+    return { li, after: e.clientY > box.top + box.height / 2 };
+  };
+  queue.addEventListener("dragstart", e => {
+    const li = e.target.closest("li.queued");
+    if (!li) { e.preventDefault(); return; }
+    el._dragging = true; el._dragId = li.dataset.id; li.classList.add("dragging");
+    e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", li.dataset.id);
+  });
+  queue.addEventListener("dragover", e => {
+    if (!el._dragging) return;
+    const spot = dropSpot(e); clearMarks();
+    if (!spot) return;
+    e.preventDefault(); e.dataTransfer.dropEffect = "move";
+    spot.li.classList.add(spot.after ? "drop-after" : "drop-before");
+  });
+  queue.addEventListener("drop", e => {
+    const spot = dropSpot(e); clearMarks();
+    if (!spot) return;
+    e.preventDefault();
+    let before = spot.li.dataset.id;
+    if (spot.after) {
+      const items = [...queue.querySelectorAll("li.queued")].filter(x => x.dataset.id !== el._dragId);
+      const next = items[items.indexOf(spot.li) + 1];
+      before = next ? next.dataset.id : "";
+    }
+    const id = el._dragId; el._dragging = false;
+    post("/api/notes/move", { ...ref(), id, before }, el);
+  });
+  queue.addEventListener("dragend", () => {
+    el._dragging = false; el._dragId = ""; clearMarks();
+    queue.querySelectorAll(".dragging").forEach(x => x.classList.remove("dragging"));
+  });
+  const onKindChange = e => {
+    const s = e.target.closest("select.kindsel");
+    if (!s) return;
+    const note = el._row.notes.find(n => n.id === s.dataset.id);
+    const kind = s.value;
+    s.blur();
+    if (!note || kind === (note.kind || "code")) return;
+    const ask = kind === "human" ? `${note.id} 를 사람이 처리할 메모로 돌릴까요? (AI 대기열에서 빠지고 열림으로 남습니다)`
+      : note.status !== "queued" ? `${note.id} 를 ${NOTE_KIND[kind]} 메모로 바꿔 ${AI_OF[kind]}에게 맡길까요?` : "";
+    if (ask && !confirm(ask)) { s.value = note.kind || "code"; return; }
+    post("/api/notes/kind", { ...ref(), id: note.id, kind }, el);
+  };
+  queue.onchange = onKindChange;
+  el.querySelector(".notes").onchange = onKindChange;
+  const sendRefine = async id => {
+    const text = (el._refine?.draft || "").trim();
+    if (!text) { el.querySelector(".err").textContent = "보완할 내용을 적어 주세요"; return; }
+    document.activeElement?.blur();
+    if ((await post("/api/notes/refine", { ...ref(), id, text, images: el._refine?.images || [] }, el)).ok) el._refine = null;
+  };
+  const drawRefineThumbs = () => {
+    const box = el.querySelector(".refine-thumbs");
+    if (box && el._refine) box.innerHTML = pendingThumbs(el._refine.images, "refine-img-del", "[다시 맡기기] 때 같이 올립니다");
+  };
+  takeImages(el.querySelector(".notes"), async files => {
+    if (!el._refine) return;
+    el._refine.images.push(...await readImages(files));
+    drawRefineThumbs();
+  }, "textarea.refine-text");
+  const saveEdit = async id => {
+    const text = (el._edit?.draft || "").trim();
+    if (!text) { el.querySelector(".err").textContent = "메모 글이 비었습니다"; return; }
+    document.activeElement?.blur();
+    if ((await post("/api/notes/text", { ...ref(), id, text }, el)).ok) el._edit = null;
+    renderQueue(el, el._row);
+  };
+  queue.addEventListener("input", e => { if (e.target.matches("textarea.edit-text") && el._edit) el._edit.draft = e.target.value; });
+  queue.addEventListener("keydown", e => {
+    if (!e.target.matches("textarea.edit-text")) return;
+    if (e.key === "Escape") { el._edit = null; document.activeElement?.blur(); renderQueue(el, el._row); return; }
+    if (e.key !== "Enter" || e.shiftKey || e.isComposing || e.keyCode === 229) return;
+    e.preventDefault(); saveEdit(e.target.dataset.id);
+  });
+  el.querySelector(".notes").addEventListener("input", e => { if (e.target.matches("textarea.refine-text") && el._refine) el._refine.draft = e.target.value; });
+  el.querySelector(".notes").addEventListener("keydown", e => {
+    if (!e.target.matches("textarea.refine-text")) return;
+    if (e.key !== "Enter" || e.shiftKey || e.isComposing || e.keyCode === 229) return;
+    e.preventDefault(); sendRefine(e.target.dataset.id);
+  });
+  return el;
+}
+
+// ── 메모 그리기 ──
+const OPEN_LOGS = new Set();   // 펼쳐 둔 결과 — 2초마다 다시 그려도 펼친 채로
+document.addEventListener("toggle", e => {
+  const d = e.target;
+  if (!(d instanceof HTMLDetailsElement) || !d.dataset.logKey) return;
+  if (d.open) OPEN_LOGS.add(d.dataset.logKey); else OPEN_LOGS.delete(d.dataset.logKey);
+}, true);
+function resultTag(label, kind) {
+  const cls = kind === "fixed" ? "r-ok" : kind === "needs_confirm" ? "r-ask" : label ? "r-bad" : "";
+  return label ? `<span class="rtag ${cls}">${esc(label)}</span>` : "";
+}
+function historyLines(n, limit = 6) {
+  const lines = (n.log || []).slice(-limit).reverse().map(line => { const m = /^(\S+)\s+([\s\S]*)$/.exec(line); return m ? `${time(m[1])}  ${m[2].split("\n")[0]}` : line; });
+  return lines.length ? `\n\n작업 기록\n${lines.join("\n")}` : "";
+}
+function noteLog(n) {
+  const r = n.result;
+  if (r && r.headline && !["queued", "working"].includes(n.status)) {
+    const key = `${n.id}|${r.at}`;
+    const files = (r.files || []).length ? `<div class="rfiles">바꾼 파일 ${r.files.map(f => `<code>${esc(f)}</code>`).join(" ")}</div>` : "";
+    return `<details class="nres" data-log-key="${esc(key)}"${OPEN_LOGS.has(key) ? " open" : ""}>
+      <summary>${resultTag(r.label, r.kind)}<span class="rhead">${esc(r.headline)}</span><span class="rwhen">${esc(time(r.at))} · 자세히</span></summary>
+      <div class="rbody">${esc((r.detail || "(자세한 설명 없음)") + historyLines(n))}</div></details>${files}`;
+  }
+  if (!n.log || !n.log.length) return "";
+  const last = n.log[n.log.length - 1];
+  const m = /^(\S+)\s+([\s\S]*)$/.exec(last);
+  return `<div class="nlog">${esc(m ? `${time(m[1])} ${m[2]}` : last)}</div>`;
+}
+function attachThumbs(pid, noteId, rels) {
+  if (!rels || !rels.length) return "";
+  const url = rel => `/api/attachment?project=${encodeURIComponent(pid)}&note=${encodeURIComponent(noteId)}&file=${encodeURIComponent(rel.split("/").pop())}`;
+  return `<div class="nimgs">${rels.map(rel => `<a href="${url(rel)}" target="_blank" rel="noopener" title="크게 보기"><img src="${url(rel)}" alt="붙인 그림" loading="lazy"></a>`).join("")}</div>`;
+}
+function refinements(n, pid) {
+  const list = n.refinements || [];
+  return list.length ? `<ol class="refines">${list.map((r, i) => `<li><b>보완 ${i + 1}</b> <span class="rwhen">${esc(time(r.at))}</span> ${esc(r.text)}${attachThumbs(pid, n.id, r.images)}</li>`).join("")}</ol>` : "";
+}
+function takeImages(root, onFiles, selector = null) {
+  const hit = e => !selector || e.target.matches(selector);
+  const images = files => files.filter(f => f && f.type.startsWith("image/"));
+  root.addEventListener("paste", e => {
+    if (!hit(e)) return;
+    const files = images([...(e.clipboardData?.items || [])].filter(i => i.kind === "file").map(i => i.getAsFile()));
+    if (files.length) { e.preventDefault(); onFiles(files); }
+  });
+  root.addEventListener("dragover", e => { if (hit(e) && [...e.dataTransfer.items].some(i => i.type.startsWith("image/"))) e.preventDefault(); });
+  root.addEventListener("drop", e => {
+    if (!hit(e)) return;
+    const files = images([...e.dataTransfer.files]);
+    if (files.length) { e.preventDefault(); onFiles(files); }
+  });
+}
+const readImages = files => Promise.all(files.map(f => new Promise((ok, no) => {
+  const rd = new FileReader();
+  rd.onload = () => ok({ name: f.name || "paste.png", data: rd.result });
+  rd.onerror = no;
+  rd.readAsDataURL(f);
+})));
+function pendingThumbs(list, act, when) {
+  const del = i => act === "pt" ? `data-pt="${i}"` : `data-act="${act}" data-k="${i}"`;
+  return list.map((img, i) => `<span class="pt"><img src="${img.data}" alt=""><button ${del(i)} title="빼기">✕</button></span>`).join("")
+    + (list.length ? `<span class="meta">그림 ${list.length}장 — ${when}</span>` : "");
+}
+function noteHead(n, pid) {
+  const k = n.kind || "code";
+  return `<span class="nid">${esc(n.id)}<span class="kind k-${esc(k)}" title="${AI_OF[k] || ""}">${NOTE_KIND[k] || esc(k)}</span></span>
+      <div><div class="ntext">${esc(n.text)}</div>${attachThumbs(pid, n.id, n.images)}${refinements(n, pid)}${noteLog(n)}</div>`;
+}
+function kindSelect(n) {
+  const k = n.kind || "code";
+  const tip = n.status === "queued" ? "종류를 잘못 골랐으면 바꿉니다" : "바꾸면 그 종류로 다시 맡깁니다";
+  return `<select class="kindsel" data-id="${esc(n.id)}" title="${tip}">`
+    + Object.entries(NOTE_KIND).map(([v, name]) => `<option value="${v}"${v === k ? " selected" : ""}>${v === k ? "종류: " : "→ "}${name}</option>`).join("") + `</select>`;
+}
+// 종류 칸 · 보완 칸 · 고치기 칸을 쓰는 중에는 2초 새로고침이 목록을 다시 그리지 않는다(칸이 닫히고 글이 날아간다)
+const pickingKind = el => document.activeElement && document.activeElement.matches("select.kindsel, textarea.refine-text, textarea.edit-text") && el.contains(document.activeElement);
+const editing = (el, n) => el._edit && el._edit.id === n.id && n.status === "queued";
+function editHead(el, n, pid) {
+  const k = n.kind || "code";
+  return `<span class="nid">${esc(n.id)}<span class="kind k-${esc(k)}">${NOTE_KIND[k]}</span></span>
+      <div><div class="refine"><textarea class="edit-text" data-id="${esc(n.id)}" placeholder="메모 글 — Enter 로 저장 · Shift+Enter 줄바꿈 · Esc 취소">${esc(el._edit.draft)}</textarea>
+        <div class="refine-acts"><button class="primary" data-act="edit-save" data-id="${esc(n.id)}">저장</button><button data-act="edit-cancel" data-id="${esc(n.id)}">취소</button></div>
+      </div>${attachThumbs(pid, n.id, n.images)}${noteLog(n)}</div>`;
+}
+function renderQueue(el, row) {
+  if (el._dragging || pickingKind(el)) return;
+  const inQueue = row.notes.filter(n => n.status === "working" || n.status === "queued");
+  if (el._edit && !row.notes.some(n => n.id === el._edit.id && n.status === "queued")) el._edit = null;
+  const queued = inQueue.filter(n => n.status === "queued");
+  el.querySelector(".qhead").textContent = inQueue.length ? `대기열 ${inQueue.length}개 — 위에서부터 처리` : "대기열 — 비어 있음";
+  el.querySelector(".queue").innerHTML = inQueue.map((n, i) => {
+    const qi = queued.indexOf(n);
+    const b = (act, label, extra = "", dis = false) => `<button data-act="${act}" data-id="${esc(n.id)}" ${extra} ${dis ? "disabled" : ""}>${label}</button>`;
+    const acts = n.status === "working" ? `<span class="st st-working">처리 중</span>`
+      : `<span class="st st-queued">대기</span>` + b("edit", "고치기", 'title="처리 전에 메모 글을 고칩니다"') + kindSelect(n)
+        + b("move", "↑", `data-before="${qi > 0 ? esc(queued[qi - 1].id) : ""}" title="위로"`, qi <= 0)
+        + b("move", "↓", `data-before="${qi + 2 < queued.length ? esc(queued[qi + 2].id) : ""}" title="아래로"`, qi >= queued.length - 1)
+        + b("delete", "지우기");
+    const grip = n.status === "queued" ? `<span class="grip" title="끌어서 순서 바꾸기">⠿</span>` : "";
+    return `<li class="${esc(n.status)}" data-id="${esc(n.id)}" ${n.status === "queued" && !editing(el, n) ? 'draggable="true"' : ""}><span class="pos">${grip}${i + 1}</span>
+      <div style="display:grid;grid-template-columns:auto 1fr;gap:8px">${editing(el, n) ? editHead(el, n, row.id) : noteHead(n, row.id)}</div>
+      <div class="nact">${acts}</div></li>`;
+  }).join("");
+  const sel = el.querySelector(".before");
+  const want = sel.value;
+  const opts = `<option value="">대기열 맨 뒤에</option>` + queued.map(n => `<option value="${esc(n.id)}">${esc(n.id)} 앞에 — ${esc(short(n.text))}</option>`).join("");
+  if (sel.dataset.sig !== opts) { sel.innerHTML = opts; sel.dataset.sig = opts; sel.value = queued.some(n => n.id === want) ? want : ""; }
+  sel.disabled = !queued.length;
+}
+function renderDone(el, row) {
+  if (pickingKind(el)) return;
+  const num = n => parseInt(String(n.id).slice(1), 10) || 0;   // 최근에 적은 메모가 맨 위
+  const done = row.notes.filter(n => !["working", "queued"].includes(n.status))
+    .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")) || num(b) - num(a));
+  el.querySelector(".dhead").textContent = done.length ? `처리된 메모 ${done.length}개` : "";
+  const list = el.querySelector(".notes");
+  const scrolled = list.scrollTop;
+  list.innerHTML = done.map(n => {
+    const b = (act, label) => `<button data-act="${act}" data-id="${esc(n.id)}">${label}</button>`;
+    const again = n.kind === "human" ? [kindSelect(n)] : [b("requeue", "다시 맡기기"), b("refine", "보완해서 다시 맡기기"), kindSelect(n)];
+    const close = [...(n.status === "review" || n.status === "open" ? [b("done", "완료")] : []), b("delete", "지우기")];
+    const form = el._refine && el._refine.id === n.id ? `<div class="refine">
+        <textarea class="refine-text" data-id="${esc(n.id)}" placeholder="지난 결과에서 고칠 점 · 덧붙일 것. 캡처는 Ctrl+V · 끌어 놓기. Enter 로 맡기기 · Shift+Enter 줄바꿈">${esc(el._refine.draft)}</textarea>
+        <div class="paste-thumbs refine-thumbs">${pendingThumbs(el._refine.images || [], "refine-img-del", "[다시 맡기기] 때 같이 올립니다")}</div>
+        <div class="refine-acts"><span class="meta">원래 메모와 지난 결과를 함께 ${AI_OF[n.kind || "code"]}에게 넘깁니다</span>
+          <button class="primary" data-act="refine-send" data-id="${esc(n.id)}">다시 맡기기</button><button data-act="refine-cancel" data-id="${esc(n.id)}">취소</button></div></div>` : "";
+    return `<li class="${esc(n.status)}">${noteHead(n, row.id)}
+      <div class="nact rows"><div class="arow"><span class="st st-${esc(n.status)}">${n.kind === "human" && n.status === "open" ? "사람이 처리" : STATUS[n.status] || esc(n.status)}</span></div>
+        <div class="arow">${again.join("")}</div><div class="arow">${close.join("")}</div></div>${form}</li>`;
+  }).join("");
+  fitDone(el);
+  list.scrollTop = scrolled;
+}
+// 처리된 메모 5개 높이를 재서 상한으로 — 여러 프로젝트를 함께 볼 때만 걸린다(body.multi). 숨은 카드는 잴 수 없어 applyFilter 가 다시 부른다
+const DONE_SHOWN = 5;
+function fitDone(el) {
+  const list = el.querySelector(".notes");
+  const items = list.children;
+  const top = items.length > DONE_SHOWN ? items[0].getBoundingClientRect().top : 0;
+  const bottom = top ? items[DONE_SHOWN - 1].getBoundingClientRect().bottom : 0;
+  if (!top && list.offsetParent === null) return;
+  list.classList.toggle("capped", bottom > top);
+  if (bottom > top) list.style.setProperty("--done-max", `${Math.ceil(bottom - top) + 2}px`);
+}
+const doneFolded = new Set();
+try { for (const k of JSON.parse(localStorage.getItem("memodesk-done-folded") || "[]")) doneFolded.add(k); } catch {}
+function applyDoneFold(el) { el.classList.toggle("done-folded", doneFolded.has(el.dataset.project)); }
+document.addEventListener("click", e => {
+  const head = e.target.closest("h4.dhead");
+  if (!head || !document.body.classList.contains("multi")) return;
+  const el = head.closest("[data-project]");
+  const key = el.dataset.project;
+  if (doneFolded.has(key)) doneFolded.delete(key); else doneFolded.add(key);
+  try { localStorage.setItem("memodesk-done-folded", JSON.stringify([...doneFolded])); } catch {}
+  applyDoneFold(el);
+  if (!doneFolded.has(key)) fitDone(el);
+});
+function renderUsage(el, row) {
+  const box = el.querySelector(".usage");
+  const rows = row.usage || [];
+  const cost = rows.reduce((s, u) => s + (u.cost_usd || 0), 0);
+  const tokens = rows.reduce((s, u) => s + (u.input || 0) + (u.output || 0), 0);
+  box.querySelector("summary").textContent = rows.length ? `AI 사용량 — 최근 ${rows.length}개 작업 · 토큰 ${tok(tokens)} · 비용 $${cost.toFixed(2)}` : "AI 사용량 — 아직 없음";
+  const sig = JSON.stringify(rows);
+  if (box.dataset.sig === sig) return;
+  box.dataset.sig = sig;
+  box.querySelector(".table-wrap").innerHTML = rows.length ? `<table>
+    <tr><th class="l">작업 시각</th><th class="l">메모</th><th class="l">AI</th><th>입력 토큰 (캐시)</th><th>출력 토큰</th><th>비용</th><th>시간</th><th class="l">결과</th></tr>
+    ${rows.map(u => `<tr><td class="l">${time(u.started) || esc(u.id)}</td><td class="l">${esc((u.note_ids || []).join(", "))}</td>
+      <td class="l">${u.provider === "claude" ? "클로드" : esc(u.provider)}${u.model && u.model !== "default" ? ` (${esc(u.model)})` : ""}</td>
+      <td>${tok(u.input)} (${tok(u.cached)})</td><td>${tok(u.output)}</td><td>${u.cost_usd == null ? "-" : "$" + u.cost_usd.toFixed(2)}</td>
+      <td>${Math.round(u.seconds)}초</td><td class="l">${JOB[u.state] || esc(u.state)}</td></tr>`).join("")}
+    <tr class="sum"><td class="l" colspan="3">합계</td><td>${tok(rows.reduce((s, u) => s + (u.input || 0), 0))} (${tok(rows.reduce((s, u) => s + (u.cached || 0), 0))})</td>
+      <td>${tok(rows.reduce((s, u) => s + (u.output || 0), 0))}</td><td>$${cost.toFixed(2)}</td><td>${Math.round(rows.reduce((s, u) => s + (u.seconds || 0), 0))}초</td><td></td></tr>
+  </table>` : `<p class="meta">AI 작업이 끝나면 여기 쌓입니다(최근 10개).</p>`;
+}
+function update(el, row) {
+  el._row = row;
+  const busy = busyOf(row);
+  const queued = row.notes.filter(n => n.status === "queued").length;
+  el.querySelector(".pname").textContent = row.name;
+  const gtag = el.querySelector(".gtag");
+  gtag.textContent = row.group || ""; gtag.classList.toggle("hidden", !row.group);
+  el.querySelector(".pp").textContent = row.path;
+  const warn = el.querySelector(".warnline");
+  const warnText = !row.path_ok ? "경로가 없습니다 — [설정]에서 경로를 고치세요" : row.warning;
+  warn.textContent = warnText; warn.classList.toggle("hidden", !warnText); warn.classList.toggle("bad", !row.path_ok);
+  const ctl = el.querySelector(".runctl");
+  ctl.textContent = row.paused ? (queued ? `다시 시작 (${queued})` : "다시 시작") : (busy ? "지금 멈춤" : "멈춤");
+  ctl.className = "runctl " + (row.paused ? "primary" : "danger");
+  ctl.title = row.paused ? "멈춘 대기열을 이어서 처리합니다" : busy ? "처리 중인 작업을 바로 끊고 되돌립니다(그 작업의 AI 비용은 버려집니다)"
+    : "멈춰 두고 메모를 여러 개 적은 뒤 [다시 시작]하면 적은 순서대로 처리합니다";
+  const soft = el.querySelector(".softctl");
+  soft.classList.toggle("hidden", row.paused || !busy);
+  soft.textContent = row.pause_after ? "멈춤 예약 취소" : "이번 작업 끝나면 멈춤";
+  const qs = el.querySelector(".qstate");
+  const jobs = row.jobs || [];
+  if (jobs.length) { qs.className = "qstate running";
+    qs.textContent = "● 처리 중 — " + jobs.map(j => `${j.note_ids.join(", ")} (${AI_OF[j.note_kind] || ""}) · ${j.step}`).join("  ‖  ")
+      + (row.pause_after ? " · ⏸ 이번 작업이 끝나면 멈춥니다" : ""); }
+  else if (row.paused) { qs.className = "qstate paused"; qs.textContent = `■ 멈춤 — 대기 ${queued}개. [다시 시작]을 누르면 이어서 처리합니다`; }
+  else { qs.className = "qstate idle"; qs.textContent = queued ? `대기 ${queued}개 — 곧 시작합니다` : "쉬는 중 — 메모를 적으면 바로 처리합니다"; }
+  el.querySelector(".edit-project").disabled = false;
+  renderQueue(el, row);
+  renderDone(el, row);
+  renderUsage(el, row);
+  const jobBox = el.querySelector(".job");
+  const wasOpen = new Set([...jobBox.querySelectorAll("details[data-job]")].filter(d => d.open).map(d => d.dataset.job));
+  const shownJobs = jobs.length ? jobs : (row.job ? [row.job] : []);
+  const shownIds = new Set(shownJobs.map(j => j.id));
+  const hist = row.history.filter(h => !shownIds.has(h.id));
+  const label = j => `${NOTE_KIND[j.note_kind] || "작업"} ${(j.note_ids || []).join(", ")}`;
+  jobBox.innerHTML = shownJobs.map(j => {
+    const live = j.state === "running";
+    return `<div class="job-line"><b>${esc(label(j))}</b><span class="js-${esc(j.state)}">${JOB[j.state]}${live && j.step ? ` — ${esc(j.step)}` : ""}</span>
+      <span>${esc(j.summary)}</span><span class="meta">${time(j.started)}${j.ended ? " ~ " + time(j.ended) : ""} · data/${esc(j.log)}</span></div>
+      <details data-job="${esc(j.id)}"${wasOpen.has(j.id) || live ? " open" : ""}><summary>로그 끝부분</summary><pre>${esc(j.tail)}</pre></details>`;
+  }).join("") + (hist.length ? `<ul class="hist">${hist.map(h => `<li>${time(h.started)} ${esc(label(h))} — ${JOB[h.state] || esc(h.state)} ${esc(h.summary)}</li>`).join("")}</ul>` : "");
+  for (const pre of jobBox.querySelectorAll("pre")) if (jobs.length) pre.scrollTop = pre.scrollHeight;
+}
+
+async function refresh() {
+  let data;
+  try { data = await (await fetch("/api/state")).json(); } catch { return; }
+  document.getElementById("datadir").textContent = `기록: ${data.data_dir}`;
+  const list = document.getElementById("list");
+  const ids = new Set(data.projects.map(p => p.id));
+  for (const [id, el] of cards) if (!ids.has(id)) { el.remove(); cards.delete(id); }
+  if (!data.projects.length) {
+    list.innerHTML = `<div class="welcome"><h2>MemoDesk 에 오신 것을 환영합니다</h2>
+      <p>왼쪽 <b>[+ 프로젝트 추가]</b>로 AI 가 고칠 폴더를 등록하세요. 프로젝트마다 메모를 적으면 대기열에 들어가고, 클로드가 위에서부터 차례로 처리합니다.</p>
+      <p class="meta">작업 전에 폴더를 백업하고, 실패하거나 멈추면 그 작업이 바꾼 것만 되돌립니다. AI 는 파일을 지우지 못하고(보관 폴더로 옮깁니다) git 명령도 쓰지 못합니다.</p></div>`;
+  } else {
+    list.querySelector(".welcome")?.remove(); list.querySelector(".empty")?.remove();
+    for (const row of data.projects) {
+      if (!cards.has(row.id)) { const el = makeCard(row); cards.set(row.id, el); list.appendChild(el); }
+      update(cards.get(row.id), row);
+    }
+  }
+  renderSidebar(data.projects);
+  applyFilter();
+  renderModels(data.models);
+  showRestartBanner(data.restart_needed);
+}
+refresh();
+setInterval(refresh, 2000);
+</script>
+</body>
+</html>

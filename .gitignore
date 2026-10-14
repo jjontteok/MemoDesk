@@ -1,0 +1,9 @@
+# PC 마다 다른 기록 — 메모 · 백업 · 로그 · 설정
+data/
+
+__pycache__/
+*.pyc
+.venv/
+venv/
+.idea/
+.vscode/

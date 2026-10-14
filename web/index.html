@@ -123,6 +123,22 @@
   .usage td.l, .usage th.l { text-align: left; }
   .usage tr.sum td { font-weight: 700; background: var(--chip); }
   .err { color: var(--bad); font-size: 12px; min-height: 1em; }
+  /* 시작하기 전에 — 점검표 */
+  .setup { background: var(--card); border: 2px solid var(--warn); border-radius: 12px; padding: 16px; }
+  .setup.ready { border-color: var(--ok); }
+  .setup h2 { margin: 0 0 4px; font-size: 17px; }
+  .setup ol { margin: 10px 0 0; padding-left: 0; list-style: none; display: grid; gap: 8px; }
+  .setup li { display: grid; grid-template-columns: 26px 1fr auto; gap: 8px; align-items: start; padding: 10px; border: 1px solid var(--line); border-radius: 8px; }
+  .setup li .mark { font-size: 18px; line-height: 1.2; text-align: center; }
+  .setup li.ok .mark { color: var(--ok); } .setup li.no .mark { color: var(--bad); } .setup li.opt .mark { color: var(--warn); }
+  .setup li .what b { font-size: 14px; } .setup li .what .tag { font-size: 11px; margin-left: 6px; padding: 0 6px; border-radius: 999px; background: var(--chip); color: var(--muted); }
+  .setup li .detail { font-size: 12px; color: var(--muted); word-break: break-all; }
+  .setup li .help { font-size: 12px; margin-top: 2px; }
+  .setup li .acts { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .setup .bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+  .setup .bar .sp { flex: 1; }
+  .setup .manual { font-family: Consolas, monospace; background: var(--chip); padding: 2px 6px; border-radius: 4px; }
+  .setup-btn { width: 100%; margin-top: 8px; }
   .welcome { background: var(--card); border: 1px dashed var(--line); border-radius: 12px; padding: 24px; }
   .welcome h2 { margin-top: 0; }
   @media (max-width: 800px) {
@@ -147,12 +163,14 @@
 <div class="layout">
 <aside class="side" aria-label="프로젝트 고르기">
   <button class="primary add-project" id="open-add" type="button">+ 프로젝트 추가</button>
+  <button class="setup-btn" id="open-setup" type="button" title="Claude Code · 로그인 · Git 이 준비됐는지 봅니다">환경 점검</button>
   <h5>묶음</h5><div class="group" id="f-group"></div>
   <h5>프로젝트</h5><div class="plist" id="f-project"></div>
   <div class="models" id="models" aria-label="AI 모델"></div>
   <button class="to-top" type="button" onclick="window.scrollTo({ top: 0, behavior: 'smooth' })">↑ 맨 위로</button>
 </aside>
 <main>
+  <section class="setup hidden" id="setup" aria-label="시작하기 전에"></section>
   <section class="pform hidden" id="add-form" aria-label="프로젝트 추가">
     <h3>프로젝트 추가</h3>
     <label>이름 <input type="text" class="f-name" placeholder="예: 홈페이지 리뉴얼"></label>
@@ -684,7 +702,7 @@ async function refresh() {
   for (const [id, el] of cards) if (!ids.has(id)) { el.remove(); cards.delete(id); }
   if (!data.projects.length) {
     list.innerHTML = `<div class="welcome"><h2>MemoDesk 에 오신 것을 환영합니다</h2>
-      <p>왼쪽 <b>[+ 프로젝트 추가]</b>로 AI 가 고칠 폴더를 등록하세요. 프로젝트마다 메모를 적으면 대기열에 들어가고, 클로드가 위에서부터 차례로 처리합니다.</p>
+      <p>먼저 위의 <b>시작하기 전에</b> 점검표가 모두 ✔ 인지 확인하세요. 그다음 왼쪽 <b>[+ 프로젝트 추가]</b>로 AI 가 고칠 폴더를 등록하세요. 프로젝트마다 메모를 적으면 대기열에 들어가고, 클로드가 위에서부터 차례로 처리합니다.</p>
       <p class="meta">작업 전에 폴더를 백업하고, 실패하거나 멈추면 그 작업이 바꾼 것만 되돌립니다. AI 는 파일을 지우지 못하고(보관 폴더로 옮깁니다) git 명령도 쓰지 못합니다.</p></div>`;
   } else {
     list.querySelector(".welcome")?.remove(); list.querySelector(".empty")?.remove();
@@ -700,6 +718,55 @@ async function refresh() {
 }
 refresh();
 setInterval(refresh, 2000);
+
+// ── 시작하기 전에 — 클로드 CLI · 로그인 · Git 점검과 설치 · 로그인 버튼 ──
+// 준비가 안 됐으면 맨 위에 펼친다. 다 되면 접고, 왼쪽 [환경 점검]으로 다시 연다. 설치 · 로그인은 서버가 새 창으로 띄운다
+const setupBox = document.getElementById("setup");
+let setupData = null, setupMsg = "", setupOpen = false;
+async function loadSetup(force = false) {
+  try { setupData = await (await fetch("/api/setup" + (force ? "?force=1" : ""))).json(); } catch { return; }
+  if (!setupData.ready) setupOpen = true;
+  renderSetup();
+}
+function renderSetup() {
+  const d = setupData;
+  const btn = document.getElementById("open-setup");
+  btn.textContent = d && d.ready ? "환경 점검 ✔" : "환경 점검 — 준비 필요";
+  btn.className = "setup-btn" + (d && !d.ready ? " danger" : "");
+  setupBox.classList.toggle("hidden", !d || !setupOpen);
+  if (!d) return;
+  setupBox.classList.toggle("ready", d.ready);
+  const ACTION = { install_claude: "설치하기", login_claude: "로그인하기", install_git: "설치하기" };
+  setupBox.innerHTML = `<h2>${d.ready ? "✔ 준비됐습니다" : "시작하기 전에 — 이것부터 준비하세요"}</h2>
+    <p class="meta">${d.ready ? "메모를 적으면 클로드가 처리합니다." : "아래 순서대로 버튼을 누르세요. 설치 · 로그인은 새 창에서 진행되고, 끝나면 그 창을 닫고 [다시 확인]을 누릅니다."}</p>
+    <ol>${d.items.map((it, i) => `<li class="${it.ok ? "ok" : it.required ? "no" : "opt"}">
+      <span class="mark">${it.ok ? "✔" : it.required ? "✘" : "!"}</span>
+      <div class="what"><b>${i + 1}. ${esc(it.name)}</b><span class="tag">${it.required ? "필수" : "권장"}</span>
+        <div class="detail">${esc(it.detail)}</div>${!it.ok && it.help ? `<div class="help">${esc(it.help)}</div>` : ""}</div>
+      <div class="acts">${it.action ? `<button class="primary" data-setup="${esc(it.action)}">${ACTION[it.action] || "실행"}</button>` : ""}</div></li>`).join("")}</ol>
+    <div class="bar"><button data-setup="recheck">다시 확인</button>
+      ${d.items.find(i => i.id === "claude_login")?.ok ? `<button data-setup="try_call" title="Haiku 로 한 번 불러 실제로 쓸 수 있는지 봅니다(비용 약 $0.01)">실제로 불러 보기</button>` : ""}
+      <span class="meta">${esc(setupMsg)}</span><span class="sp"></span>${d.ready ? `<button data-setup="close">닫기</button>` : ""}</div>`;
+}
+setupBox.addEventListener("click", async e => {
+  const b = e.target.closest("button[data-setup]");
+  if (!b) return;
+  const act = b.dataset.setup;
+  if (act === "close") { setupOpen = false; renderSetup(); return; }
+  if (act === "recheck") { setupMsg = "확인하는 중…"; renderSetup(); await loadSetup(true); setupMsg = setupData.ready ? "준비 완료" : "아직 준비가 덜 됐습니다"; renderSetup(); return; }
+  b.disabled = true;
+  if (act === "try_call") { setupMsg = "불러 보는 중… (최대 몇십 초)"; renderSetup(); }
+  const { res, data } = await postJson("/api/setup/run", { action: act });
+  if (!res.ok) setupMsg = data.error || "실패했습니다";
+  else if (data.manual) setupMsg = `터미널에서 직접 실행하세요: ${data.manual}`;
+  else if (act === "try_call") setupMsg = data.ok ? `✔ ${data.detail}` : `✘ ${data.detail}`;
+  else setupMsg = "새 창이 열렸습니다 — 끝나면 그 창을 닫고 [다시 확인]을 누르세요";
+  renderSetup();
+});
+document.getElementById("open-setup").onclick = () => { setupOpen = true; renderSetup(); loadSetup(true); window.scrollTo({ top: 0, behavior: "smooth" }); };
+loadSetup();
+// 준비가 안 된 동안에는 가끔 다시 본다(새 창에서 설치 · 로그인이 끝났을 수 있다) — 서버는 60초 동안 결과를 재사용한다
+setInterval(() => { if (setupData && !setupData.ready) loadSetup(); }, 15000);
 </script>
 </body>
 </html>

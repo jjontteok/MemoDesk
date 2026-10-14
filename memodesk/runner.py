@@ -23,7 +23,7 @@ import threading
 from datetime import datetime
 from pathlib import Path
 
-from memodesk import config, failures, notes, notify, projects, usage
+from memodesk import config, failures, notes, notify, projects, setup, usage
 from memodesk.notes import KST
 
 IS_WINDOWS = os.name == "nt"
@@ -364,6 +364,9 @@ def ai_job(pid: str, group: list[dict]) -> Job:
     kind = notes.kind_of(group[0])
     ids = [n["id"] for n in group]
     label, module, result_name = AI_KIND[kind]
+    claude = setup.find_claude()
+    if not claude:
+        raise ValueError("Claude Code CLI 가 설치되어 있지 않다 — 화면 위 [시작하기 전에]에서 설치한 뒤 [다시 맡기기]")
     (folder / result_name).unlink(missing_ok=True)   # 지난 작업의 결과를 이번 것으로 읽지 않게
     backup_project(pid, stamp, kind)
     try:
@@ -371,7 +374,7 @@ def ai_job(pid: str, group: list[dict]) -> Job:
     except Exception:
         active_marker(pid, notes.LANE[kind]).unlink(missing_ok=True)   # 아무것도 안 바꿨다
         raise
-    cmd = [sys.executable, "-B", "-m", module, "--project", pid, "--stamp", stamp, *model_args()]
+    cmd = [sys.executable, "-B", "-m", module, "--project", pid, "--stamp", stamp, "--claude-bin", claude, *model_args()]
     job = Job(pid, [(label, cmd, config.APP_DIR)], stamp, ids, kind)
     write_log(job, f"{project_name(pid)} · {label} · 메모 {', '.join(ids)}")
     return job

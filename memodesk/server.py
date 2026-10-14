@@ -21,7 +21,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from memodesk import ai_clients, config, notes, projects, runner
+from memodesk import ai_clients, config, notes, projects, runner, setup
 
 WEB_DIR = config.APP_DIR / "web"
 PAGES = {"/": WEB_DIR / "index.html"}
@@ -144,6 +144,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, (WEB_DIR / name).read_bytes(), STATIC_FILES[name])
         if url.path == "/api/state":
             return self.send_json(state())
+        if url.path == "/api/setup":
+            return self.send_json(setup.check(force=query.get("force") == "1"))
         if url.path == "/api/attachment":
             try:
                 path = attachment(query.get("project", ""), query.get("note", ""), query.get("file", ""))
@@ -164,6 +166,8 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/models":
                 set_models(str(body.get("claude", "")).strip(), str(body.get("claude_effort", "")).strip())
                 return self.send_json({"ok": True, "models": model_state()})
+            if path == "/api/setup/run":
+                return self.send_json({"ok": True, **setup.run_action(str(body.get("action", "")))})
             if path.startswith("/api/projects/"):
                 return self.send_json({"ok": True, **self.post_project(path, body)})
             self.post_note(path, body)

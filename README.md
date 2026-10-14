@@ -19,19 +19,27 @@
 
 ## 필요한 것
 
-- Windows 10/11 (알림 · 켜기 파일이 Windows 기준입니다. 서버 자체는 macOS · Linux 에서도 돕니다)
-- Python 3.10 이상 — 추가 패키지 없음(표준 라이브러리만)
-- [Claude Code](https://docs.anthropic.com/claude-code) CLI 설치 · 로그인 — 터미널에서 `claude` 가 실행되어야 합니다
+| 무엇 | 필요 | 비고 |
+|---|---|---|
+| Windows 10/11 | — | 알림 · 켜기 파일 · 설치 버튼이 Windows 기준입니다. 서버 자체는 macOS · Linux 에서도 돕니다 |
+| 파이썬 3.10 이상 | 필수 | 추가 패키지 없음(표준 라이브러리만). `Setup.bat` 이 없으면 설치합니다 |
+| [Claude Code](https://code.claude.com/docs/en/setup) CLI | 필수 | 화면의 [설치하기] 버튼(공식 설치 명령) |
+| 클로드 계정 | 필수 | **Pro · Max · Team · Enterprise · Console** 계정(무료 플랜은 안 됩니다). 화면의 [로그인하기] 버튼 |
+| Git for Windows | 권장 | 없으면 AI 가 PowerShell 로 명령을 돌려 '지울 파일 보관 폴더로 옮기기'가 막힐 수 있습니다 |
 
-## 켜기
+## 처음 설치
+
+1. 이 레포를 받습니다(`git clone https://github.com/jjontteok/MemoDesk.git` 또는 GitHub 의 **Code → Download ZIP** 후 압축 풀기).
+2. **`Setup.bat`** 을 더블클릭합니다. 파이썬이 없으면 winget 으로 설치한 뒤 MemoDesk 를 켭니다.
+3. 브라우저에 열린 화면 맨 위 **시작하기 전에** 점검표를 따라 버튼을 누릅니다 —
+   Claude Code [설치하기] → 계정 [로그인하기] → (권장) Git [설치하기]. 설치 · 로그인은 새 창에서 진행되고, 끝나면 [다시 확인].
+4. 모두 ✔ 이면 [실제로 불러 보기]로 한 번 확인합니다(Haiku 로 한 번, 비용 약 $0.01).
+
+다음부터는 **`MemoDesk.bat`** 을 더블클릭합니다(이미 켜져 있으면 브라우저만 엽니다). 직접 켜려면:
 
 ```bash
-git clone https://github.com/jjontteok/MemoDesk.git
-cd MemoDesk
 python -B -m memodesk            # http://127.0.0.1:8791
 ```
-
-Windows 에서는 `MemoDesk.bat` 을 더블클릭해도 됩니다(이미 켜져 있으면 브라우저만 엽니다).
 검은 서버 창을 닫으면 꺼집니다. 돌던 작업은 다음에 켤 때 되돌리고 그 프로젝트를 멈춤으로 둡니다.
 
 ```bash
@@ -107,19 +115,27 @@ You: check the result → [Done] / [Refine and retry]
 
 ## Requirements
 
-- Windows 10/11 (notifications and the launcher are Windows-first; the server itself runs on macOS/Linux)
-- Python 3.10+ — no third-party packages (standard library only)
-- [Claude Code](https://docs.anthropic.com/claude-code) CLI installed and logged in — `claude` must run in a terminal
+| What | Needed | Notes |
+|---|---|---|
+| Windows 10/11 | — | Notifications, launcher and install buttons are Windows-first; the server itself runs on macOS/Linux |
+| Python 3.10+ | Required | No third-party packages. `Setup.bat` installs it if missing |
+| [Claude Code](https://code.claude.com/docs/en/setup) CLI | Required | [설치하기 / Install] button on the setup checklist (official installer) |
+| Claude account | Required | **Pro, Max, Team, Enterprise or Console** (the free plan does not include Claude Code). [로그인하기 / Log in] button |
+| Git for Windows | Recommended | Without it Claude runs commands through PowerShell and "move files to the removed folder" may be blocked |
 
-## Run
+## First-time setup
+
+1. Get this repo (`git clone https://github.com/jjontteok/MemoDesk.git`, or **Code → Download ZIP** on GitHub and unzip).
+2. Double-click **`Setup.bat`**. It installs Python with winget if needed, then starts MemoDesk.
+3. Follow the **시작하기 전에 (Before you start)** checklist at the top of the page —
+   install Claude Code → log in → (recommended) install Git. Installs and login run in a new window; press [다시 확인 / Re-check] when done.
+4. When everything is ✔, press [실제로 불러 보기 / Try a real call] once (one Haiku call, about $0.01).
+
+Afterwards, double-click **`MemoDesk.bat`** (if it is already running, it just opens the browser), or run:
 
 ```bash
-git clone https://github.com/jjontteok/MemoDesk.git
-cd MemoDesk
 python -B -m memodesk            # http://127.0.0.1:8791
 ```
-
-On Windows you can double-click `MemoDesk.bat` (if it is already running, it just opens the browser).
 Closing the server window stops it; an interrupted job is rolled back on the next start and that project is paused.
 
 ## How to use

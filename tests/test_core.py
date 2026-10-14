@@ -20,7 +20,7 @@ _TMP = tempfile.TemporaryDirectory()
 os.environ["MEMODESK_DATA"] = _TMP.name
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from memodesk import config, failures, notes, projects, runner, server  # noqa: E402
+from memodesk import config, failures, notes, projects, runner, server, setup  # noqa: E402
 
 
 def reset_data() -> None:
@@ -156,6 +156,35 @@ class FailureTests(unittest.TestCase):
         echoed = json.dumps({"type": "assistant", "message": "문서 예시: Invalid API key"})
         self.assertEqual(failures.reason(echoed), "")                    # AI 가 읽은 글 속 문구는 오류가 아니다
         self.assertEqual(failures.reason("KeyError: 'x'"), "")
+
+
+class SetupTests(unittest.TestCase):
+    def test_check_shape_and_required_items(self) -> None:
+        data = setup.check(force=True)
+        ids = [i["id"] for i in data["items"]]
+        self.assertEqual(ids, ["python", "claude_cli", "claude_login", "git"])
+        self.assertEqual([i["required"] for i in data["items"]], [True, True, True, False])
+        self.assertEqual(data["ready"], all(i["ok"] for i in data["items"] if i["required"]))
+        self.assertTrue(data["items"][0]["ok"])                             # 이 시험을 돌리는 파이썬
+
+    def test_unknown_action_refused(self) -> None:
+        with self.assertRaises(ValueError):
+            setup.run_action("rm -rf /")                                     # 고정된 동작만 받는다
+
+    def test_job_refused_without_claude(self) -> None:
+        reset_data()
+        project, _ = projects.add("noclaude", tempfile.mkdtemp())
+        folder = projects.data_dir(project["id"])
+        note = notes.add(folder, "할 일")
+        old = setup.find_claude
+        setup.find_claude = lambda: None
+        try:
+            with self.assertRaises(ValueError):
+                runner.ai_job(project["id"], [note])
+        finally:
+            setup.find_claude = old
+        self.assertEqual(notes.load(folder)[0]["status"], "queued")       # 아무것도 안 바꿨다
+        self.assertFalse(runner.active_marker(project["id"], "claude").exists())
 
 
 class ApiTests(unittest.TestCase):

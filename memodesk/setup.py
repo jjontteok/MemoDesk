@@ -198,15 +198,31 @@ def run_action(action: str) -> dict:
 
 def pick_folder(title: str = "AI 가 고칠 폴더를 고르세요") -> str:
     """폴더 고르기 창(Windows) — 경로를 손으로 치지 않게(2026-10-14, 개발자가 아닌 사람도 쓴다). 취소하면 빈 문자열.
-    브라우저 뒤에 숨지 않게 맨 위에 뜨는 빈 창을 주인으로 준다."""
+
+    브라우저 뒤에 숨지 않게 **화면에 실제로 띄운** 맨 위 고정 창(투명)을 주인으로 준다. 실측(2026-10-14) — 주인 창을 만들기만 하고
+    띄우지 않았더니 맨 위 고정이 안 먹어 대화상자가 안 보인 채로 기다렸다(사용자가 두 번 눌러 둘 다 숨어 있었다)."""
     if not IS_WINDOWS:
         raise ValueError("폴더 고르기는 Windows 에서만 됩니다 — 경로를 직접 적어 주세요")
+    if not _picker_lock.acquire(blocking=False):   # 여러 번 눌러도 창은 하나 — 숨은 창이 쌓이지 않게
+        raise ValueError("폴더 고르기 창이 이미 열려 있습니다 — 작업 표시줄에서 그 창을 찾아 고르거나 취소하세요")
+    try:
+        return _pick_folder(title)
+    finally:
+        _picker_lock.release()
+
+
+_picker_lock = threading.Lock()
+
+
+def _pick_folder(title: str) -> str:
     script = ("Add-Type -AssemblyName System.Windows.Forms; "
-              "$owner = New-Object System.Windows.Forms.Form -Property @{TopMost = $true; ShowInTaskbar = $false}; "
+              "$owner = New-Object System.Windows.Forms.Form -Property @{TopMost = $true; ShowInTaskbar = $false; "
+              "Opacity = 0; FormBorderStyle = 'None'; StartPosition = 'CenterScreen'; Width = 1; Height = 1}; "
+              "$owner.Show(); $owner.Activate(); "
               "$d = New-Object System.Windows.Forms.FolderBrowserDialog; "
               f"$d.Description = '{_ps_quote(title)}'; $d.ShowNewFolderButton = $true; "
-              "if ($d.ShowDialog($owner) -eq [System.Windows.Forms.DialogResult]::OK) { "
-              "[Console]::OutputEncoding = [Text.Encoding]::UTF8; [Console]::Out.Write($d.SelectedPath) }")
+              "$ok = $d.ShowDialog($owner) -eq [System.Windows.Forms.DialogResult]::OK; $owner.Close(); "
+              "if ($ok) { [Console]::OutputEncoding = [Text.Encoding]::UTF8; [Console]::Out.Write($d.SelectedPath) }")
     try:
         out = subprocess.run(["powershell", "-NoProfile", "-STA", "-Command", script], capture_output=True,
                              timeout=600, creationflags=subprocess.CREATE_NO_WINDOW)
